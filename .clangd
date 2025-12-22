@@ -1,0 +1,4 @@
+CompileFlags:
+  Add:
+    ['-Wno-microsoft-enum-forward-reference']
+  CompilationDatabase: build/clang-debug

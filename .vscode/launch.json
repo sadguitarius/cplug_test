@@ -1,0 +1,51 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch lldb-dap Ableton",
+      "type": "lldb-dap",
+      "request": "launch",
+      "cwd": "${fileDirname}",
+      "program": "C:/ProgramData/Ableton/Live 12 Suite/Program/Ableton Live 12 Suite.exe"
+    },
+    {
+      "name": "Launch lldb-dap Standalone",
+      "type": "lldb-dap",
+      "request": "launch",
+      "cwd": "${fileDirname}",
+      "program": "C:/Users/sadguitarius/src/projects/cplug_test/build/clang-debug/Debug/cplug_example_app.exe"
+    },
+    {
+      "name": "Attach lldb-dap",
+      "type": "lldb-dap",
+      "request": "attach",
+      "program": "${command:pickProcess}"
+    },
+    {
+      "name": "Launch",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "cwd": "${fileDirname}",
+      "program": "C:/ProgramData/Ableton/Live 12 Suite/Program/Ableton Live 12 Suite.exe"
+    },
+    {
+      "name": "Attach",
+      "type": "cppvsdbg",
+      "request": "attach",
+      "processId": "${command:pickProcess}"
+    },
+    {
+      "name": "Launch cppdbg nvim",
+      "type": "cppdbg",
+      "request": "launch",
+      "cwd": "${fileDirname}",
+      "program": "C:/ProgramData/Ableton/Live 12 Suite/Program/Ableton Live 12 Suite.exe"
+    },
+    {
+      "name": "Attach cppdbg nvim",
+      "type": "cppdbg",
+      "request": "attach",
+      "program": "${command:pickProcess}"
+    }
+  ]
+}

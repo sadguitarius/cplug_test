@@ -1,0 +1,183 @@
+{
+    "version": 6,
+    "configurePresets": [
+        {
+            "name": "default",
+            "hidden": true,
+            "binaryDir": "${sourceDir}/build/${presetName}"
+        },
+        {
+            "name": "msvc-default",
+            "inherits": "default",
+            "hidden": true,
+            "displayName": "MSVC 2022",
+            "description": "Default build using MSVC generator",
+            "generator": "Visual Studio 17 2022"
+        },
+        {
+            "name": "msvc-release",
+            "inherits": "msvc-default",
+            "displayName": "MSVC 2022 Release",
+            "description": "Default build using MSVC generator"
+        },
+        {
+            "name": "msvc-debug",
+            "inherits": "msvc-default",
+            "displayName": "MSVC 2022 Debug",
+            "description": "Default build using MSVC generator"
+        },
+        {
+            "name": "ninja-default",
+            "inherits": "default",
+            "hidden": true,
+            "displayName": "Ninja",
+            "description": "Default build using Ninja generator",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
+            "name": "ninja-release",
+            "displayName": "Ninja Release",
+            "inherits": "ninja-default",
+            "description": "Release build using Ninja generator",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "ninja-debug",
+            "displayName": "Ninja Debug",
+            "inherits": "ninja-default",
+            "description": "Debug build using Ninja generator",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "ninja-relwithdebuginfo",
+            "displayName": "Ninja Release With Debug Info",
+            "inherits": "ninja-default",
+            "description": "RelWithDebugInfo build using Ninja generator",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebugInfo"
+            }
+        },
+        {
+            "name": "clang-default",
+            "inherits": "default",
+            "hidden": true,
+            "displayName": "Ninja Clang",
+            "description": "Default Clang build using Ninja generator",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": "clang",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
+            "name": "clang-release",
+            "displayName": "Ninja Release Clang",
+            "inherits": "clang-default",
+            "description": "Release Clang build using Ninja generator",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "clang-debug",
+            "displayName": "Ninja Clang Debug",
+            "inherits": "clang-default",
+            "description": "Debug Clang build using Ninja generator",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "clang-relwithdebuginfo",
+            "displayName": "Ninja Clang Release With Debug Info",
+            "inherits": "clang-default",
+            "description": "RelWithDebugInfo Clang build using Ninja generator",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebugInfo"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "default",
+            "hidden": true,
+            "description": "default build",
+            "displayName": "Default Build",
+            "jobs": 21
+        },
+        {
+            "name": "msvc-release",
+            "inherits": "default",
+            "displayName": "MSVC Release",
+            "description": "Release build using MSVC generator",
+            "configurePreset": "msvc-release",
+            "configuration": "Release"
+        },
+        {
+            "name": "msvc-debug",
+            "inherits": "default",
+            "displayName": "MSVC Debug",
+            "description": "Debug build using MSVC generator",
+            "configurePreset": "msvc-debug",
+            "configuration": "Debug"
+        },
+        {
+            "name": "msvc-relwithdebuginfo",
+            "inherits": "default",
+            "displayName": "MSVC Release With Debug Info",
+            "description": "RelWithDebugInfo build using MSVC generator",
+            "configurePreset": "msvc-release",
+            "configuration": "RelWithDebugInfo"
+        },
+        {
+            "name": "ninja-release",
+            "inherits": "default",
+            "displayName": "Ninja Release",
+            "description": "Release build using Ninja generator",
+            "configurePreset": "ninja-release"
+        },
+        {
+            "name": "ninja-debug",
+            "inherits": "default",
+            "displayName": "Ninja Debug",
+            "description": "Debug build using Ninja generator",
+            "configurePreset": "ninja-debug"
+        },
+        {
+            "name": "ninja-relwithdebuginfo",
+            "inherits": "default",
+            "displayName": "Ninja Release With Debug Info",
+            "description": "RelWithDebugInfo build using Ninja generator",
+            "configurePreset": "ninja-relwithdebuginfo"
+        },
+        {
+            "name": "clang-release",
+            "inherits": "default",
+            "displayName": "Ninja Clang Release",
+            "description": "Release Clang build using Ninja generator",
+            "configurePreset": "clang-release"
+        },
+        {
+            "name": "clang-debug",
+            "inherits": "default",
+            "displayName": "Ninja Clang Debug",
+            "description": "Debug Clang build using Ninja generator",
+            "configurePreset": "clang-debug"
+        },
+        {
+            "name": "clang-relwithdebuginfo",
+            "inherits": "default",
+            "displayName": "Ninja Clang Release With Debug Info",
+            "description": "RelWithDebugInfo Clang build using Ninja generator",
+            "configurePreset": "clang-relwithdebuginfo"
+        }
+    ]
+}
