@@ -13,7 +13,8 @@
 #define CPLUG_PLUGIN_URI     "http://github.com/Tremus/CPLUG"
 #define CPLUG_PLUGIN_VERSION "1.0.0"
 
-// See list of categories here: https://steinbergmedia.github.io/vst3_doc/vstinterfaces/group__plugType.html
+// See list of categories here:
+// https://steinbergmedia.github.io/vst3_doc/vstinterfaces/group__plugType.html
 #define CPLUG_VST3_CATEGORIES "Instrument|Stereo"
 
 #define CPLUG_VST3_TUID_COMPONENT  'cplg', 'comp', 'xmpl', 0
@@ -24,6 +25,7 @@
 
 #define CPLUG_CLAP_ID          "com.cplug.example"
 #define CPLUG_CLAP_DESCRIPTION "Example plugin using CPLUG"
-#define CPLUG_CLAP_FEATURES    CLAP_PLUGIN_FEATURE_INSTRUMENT, CLAP_PLUGIN_FEATURE_STEREO
+#define CPLUG_CLAP_FEATURES                                                    \
+    CLAP_PLUGIN_FEATURE_INSTRUMENT, CLAP_PLUGIN_FEATURE_STEREO
 
 #endif // PLUGIN_CONFIG_H
