@@ -35,8 +35,10 @@
 
 #define CPLUG_EVENT_QUEUE_MASK (CPLUG_EVENT_QUEUE_SIZE - 1)
 
-#define GUI_DEFAULT_WIDTH  1024
-#define GUI_DEFAULT_HEIGHT 500
+// #define GUI_DEFAULT_WIDTH  1024
+// #define GUI_DEFAULT_HEIGHT 500
+#define GUI_DEFAULT_WIDTH  512
+#define GUI_DEFAULT_HEIGHT 250
 // #define GUI_RATIO_X 16
 // #define GUI_RATIO_Y 9
 
@@ -460,10 +462,10 @@ void pw_get_info(PWGetInfo *info) {
         info->init_size.width = plugin->width;
         info->init_size.height = plugin->height;
     } else if (info->type == PW_INFO_CONSTRAIN_SIZE) {
-        if (info->constrain_size.width > 1024)
-            info->constrain_size.width = 1024;
-        if (info->constrain_size.height > 500)
-            info->constrain_size.height = 500;
+        // if (info->constrain_size.width > 1024)
+        //     info->constrain_size.width = 1024;
+        // if (info->constrain_size.height > 500)
+        //     info->constrain_size.height = 500;
     }
 }
 
@@ -477,13 +479,14 @@ void *pw_create_gui(void *_plugin, void *pw) {
     gui->plugin = plugin;
     gui->pw = pw;
 
-    const struct PWEvent ev = {
-        .type = PW_EVENT_RESIZE_UPDATE,
-        .gui = gui,
-        .resize = {.width = GUI_DEFAULT_WIDTH, .height = GUI_DEFAULT_HEIGHT}};
+    // const struct PWEvent ev = {
+    //     .type = PW_EVENT_RESIZE_UPDATE,
+    //     .gui = gui,
+    //     .resize = {.width = GUI_DEFAULT_WIDTH * gui->scale,
+    //                .height = GUI_DEFAULT_HEIGHT * gui->scale}};
     imgui_init(gui);
     imgui_start(gui);
-    pw_event(&ev);
+    // pw_event(&ev);
 
     return gui;
 }
@@ -515,8 +518,24 @@ bool pw_event(const PWEvent *event) {
     case PW_EVENT_MOUSE_RIGHT_UP:
         imgui_handle_event(gui, event);
         break;
-    case PW_EVENT_DPI_CHANGED:
-        gui->scale = event->dpi;
+    case PW_EVENT_CONTENT_SCALE_FACTOR_CHANGED:
+        float scale_change = event->content_scale_factor / gui->scale;
+        gui->scale = event->content_scale_factor;
+        gui->plugin->width *= scale_change;
+        gui->plugin->height *= scale_change;
+
+        // const struct PWEvent ev = {
+        //     .type = PW_EVENT_RESIZE_UPDATE,
+        //     .gui = gui,
+        //     .resize = {
+        //         .width = gui->plugin->width * event->content_scale_factor,
+        //         .height = gui->plugin->height *
+        //         event->content_scale_factor}};
+        //
+        // pw_event(&ev);
+
+        cplug_setSize(gui->pw, gui->plugin->width, gui->plugin->height);
+
         imgui_deinit(gui);
         imgui_init(gui);
         imgui_start(gui);
