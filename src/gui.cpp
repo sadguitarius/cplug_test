@@ -120,8 +120,9 @@ void imgui_tick(GUI *gui) {
     style.ChildRounding = 10.0f;
 
     ImGui::SetNextWindowPos({0, 0});
-    ImGui::SetNextWindowSize({static_cast<float>(gui->plugin->width),
-                              static_cast<float>(gui->plugin->height)});
+    ImGui::SetNextWindowSize(
+        {static_cast<float>(gui->plugin->width * gui->scale),
+         static_cast<float>(gui->plugin->height * gui->scale)});
     ImGui::Begin("Demo Plugin", 0,
                  ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
 

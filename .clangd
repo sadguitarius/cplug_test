@@ -1,4 +1,4 @@
 CompileFlags:
   Add:
     ['-Wno-microsoft-enum-forward-reference']
-  CompilationDatabase: build/ninja-release
+  CompilationDatabase: build/ninja-debug

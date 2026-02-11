@@ -9,11 +9,32 @@
       "program": "C:/ProgramData/Ableton/Live 12 Suite/Program/Ableton Live 12 Suite.exe"
     },
     {
+      "name": "Launch lldb-dap Cubase",
+      "type": "lldb-dap",
+      "request": "launch",
+      "cwd": "${fileDirname}",
+      "program": "C:/Program Files/Steinberg/Cubase 15/Cubase15.exe"
+    },
+    {
+      "name": "Launch lldb-dap Reaper",
+      "type": "lldb-dap",
+      "request": "launch",
+      "cwd": "${fileDirname}",
+      "program": "C:/Program Files/REAPER (x64)/reaper.exe"
+    },
+    {
+      "name": "Launch lldb-dap Reason",
+      "type": "lldb-dap",
+      "request": "launch",
+      "cwd": "${fileDirname}",
+      "program": "C:/Program Files/Propellerhead/Reason 13/Reason.exe"
+    },
+    {
       "name": "Launch lldb-dap Standalone",
       "type": "lldb-dap",
       "request": "launch",
       "cwd": "${fileDirname}",
-      "program": "C:/Users/sadguitarius/src/projects/cplug_test/build/clang-debug/Debug/cplug_example_app.exe"
+      "program": "C:/Users/sadguitarius/src/projects/cplug_test/build/ninja-debug/Debug/cplug_example_app.exe"
     },
     {
       "name": "Attach lldb-dap",

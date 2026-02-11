@@ -479,14 +479,8 @@ void *pw_create_gui(void *_plugin, void *pw) {
     gui->plugin = plugin;
     gui->pw = pw;
 
-    // const struct PWEvent ev = {
-    //     .type = PW_EVENT_RESIZE_UPDATE,
-    //     .gui = gui,
-    //     .resize = {.width = GUI_DEFAULT_WIDTH * gui->scale,
-    //                .height = GUI_DEFAULT_HEIGHT * gui->scale}};
     imgui_init(gui);
     imgui_start(gui);
-    // pw_event(&ev);
 
     return gui;
 }
@@ -506,10 +500,11 @@ void pw_tick(void *_gui) {
 
 bool pw_event(const PWEvent *event) {
     GUI *gui = (GUI *)event->gui;
+    Plugin *plugin = gui->plugin;
     switch (event->type) {
     case PW_EVENT_RESIZE_UPDATE:
-        gui->plugin->width = event->resize.width;
-        gui->plugin->height = event->resize.height;
+        plugin->width = event->resize.width / gui->scale;
+        plugin->height = event->resize.height / gui->scale;
         break;
     case PW_EVENT_MOUSE_MOVE:
     case PW_EVENT_MOUSE_LEFT_DOWN:
@@ -519,26 +514,21 @@ bool pw_event(const PWEvent *event) {
         imgui_handle_event(gui, event);
         break;
     case PW_EVENT_CONTENT_SCALE_FACTOR_CHANGED:
-        float scale_change = event->content_scale_factor / gui->scale;
-        gui->scale = event->content_scale_factor;
-        gui->plugin->width *= scale_change;
-        gui->plugin->height *= scale_change;
+        float scale = event->content_scale_factor;
+        gui->scale = scale;
+        float width = scale * plugin->width;
+        float height = scale * plugin->height;
+        cplug_setSize(gui->pw, width, height);
 
-        // const struct PWEvent ev = {
-        //     .type = PW_EVENT_RESIZE_UPDATE,
-        //     .gui = gui,
-        //     .resize = {
-        //         .width = gui->plugin->width * event->content_scale_factor,
-        //         .height = gui->plugin->height *
-        //         event->content_scale_factor}};
-        //
-        // pw_event(&ev);
-
-        cplug_setSize(gui->pw, gui->plugin->width, gui->plugin->height);
+        if (plugin->hostContext->type != CPLUG_PLUGIN_IS_STANDALONE)
+            plugin->hostContext->requestResize(plugin->hostContext, width,
+                                               height);
 
         imgui_deinit(gui);
         imgui_init(gui);
         imgui_start(gui);
+
+        break;
     default:
         break;
     }
