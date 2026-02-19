@@ -146,7 +146,7 @@ elseif(WIN32)
         lib/imgui/backends/imgui_impl_dx11.cpp
         lib/imgui/backends/imgui_impl_win32.cpp
     )
-    target_link_libraries(${PROJECT_NAME}_plugin PRIVATE dwmapi ${OPENGL_LIBRARIES} d3d11 dxguid)
+    target_link_libraries(${PROJECT_NAME}_plugin PRIVATE dwmapi shcore ${OPENGL_LIBRARIES} d3d11 dxguid)
     set_target_properties(${PROJECT_NAME}_plugin PROPERTIES
         OUTPUT_NAME ${PROJECT_NAME}_plugin
         PDB_NAME ${PROJECT_NAME}_plugin
@@ -199,7 +199,7 @@ if (WIN32)
         lib/imgui/backends/imgui_impl_dx11.cpp
         lib/imgui/backends/imgui_impl_win32.cpp
     )
-    target_link_libraries(${PROJECT_NAME}_app PRIVATE dwmapi ${OPENGL_LIBRARIES} d3d11 dxguid)
+    target_link_libraries(${PROJECT_NAME}_app PRIVATE dwmapi shcore ${OPENGL_LIBRARIES} d3d11 dxguid)
 elseif (APPLE)
     add_executable(${PROJECT_NAME}_app MACOSX_BUNDLE
         lib/CPLUG/src/cplug_standalone_osx.m
@@ -236,7 +236,7 @@ if (WIN32 AND CMAKE_BUILD_TYPE MATCHES Debug)
         lib/imgui/backends/imgui_impl_dx11.cpp
         lib/imgui/backends/imgui_impl_win32.cpp
     )
-    target_link_libraries(${HOTRELOAD_LIB_NAME} PRIVATE dwmapi ${OPENGL_LIBRARIES} d3d11 dxguid)
+    target_link_libraries(${HOTRELOAD_LIB_NAME} PRIVATE dwmapi shcore ${OPENGL_LIBRARIES} d3d11 dxguid)
     target_compile_definitions(${HOTRELOAD_LIB_NAME} PRIVATE CPLUG_SHARED)
 
     add_executable(${PROJECT_NAME}_hotreload WIN32

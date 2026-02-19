@@ -43,8 +43,6 @@ typedef struct Plugin {
     // GUI zone
     // void* gui;
     struct GUI *gui;
-    uint32_t width;
-    uint32_t height;
 
     float paramValuesMain[NUM_PARAMS];
 
@@ -58,6 +56,8 @@ typedef struct Plugin {
     cplug_atomic_i32 audioToMainTail;
     CplugEvent audioToMainQueue[CPLUG_EVENT_QUEUE_SIZE];
 
+    uint32_t width;
+    uint32_t height;
 } Plugin;
 
 typedef struct ImGuiState ImGuiState;
@@ -71,8 +71,8 @@ typedef struct GUI {
     char uniqueClassName[64];
 #endif
 
-    uint32_t *img;
-    float scale;
+    uint32_t normalized_width;
+    uint32_t normalized_height;
 
     bool mouseDragging;
     uint32_t dragParamId;
@@ -84,9 +84,9 @@ typedef struct GUI {
     ImGuiState *imgui_state;
 } GUI;
 
-void imgui_init(GUI *gui);
-void imgui_deinit(GUI *gui);
+void imgui_stop(GUI *gui);
 void imgui_start(GUI *gui);
+void imgui_set_scale(GUI *gui, float scale);
 void imgui_tick(GUI *gui);
 void imgui_handle_event(GUI *gui, const PWEvent *event);
 

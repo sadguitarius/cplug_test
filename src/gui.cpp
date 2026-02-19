@@ -1,9 +1,12 @@
 #include "defs.h"
+#include "imgui_internal.h"
 // #include "imgui_internal.h"
 #include <cassert>
 #include <cplug.h>
 #include <cplug_extensions/window.h>
 
+// #include <cstdint>
+#include <cstdint>
 #include <imgui.h>
 #include <imgui_impl_win32.h>
 #include <imgui_impl_dx11.h>
@@ -19,10 +22,6 @@
 // Data
 struct ImGuiState {
     ImGuiContext *imgui_context;
-    // ID3D11Device *d3d_device;
-    // ID3D11DeviceContext *d3d_device_context;
-    // ID3D11RenderTargetView *render_target_view;
-    // ID3D11DepthStencilView *depth_stencil_view;
 
     ImFont *font;
 
@@ -35,27 +34,12 @@ struct ImGuiState {
     int mouse_button_pressed = 0;
 };
 
-void imgui_init(GUI *gui) { ; }
-
 void imgui_start(GUI *gui) {
     ImGuiState *state = (ImGuiState *)calloc(1, sizeof(*state));
 
     state->clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
     gui->imgui_state = state;
-
-    ImGui_ImplWin32_EnableDpiAwareness();
-    // float main_scale = ImGui_ImplWin32_GetDpiScaleForMonitor(
-    //     ::MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY));
-    float main_scale = gui->scale;
-
-    // state->d3d_device = (ID3D11Device *)pw_get_dx11_device(gui->pw);
-    // state->d3d_device_context =
-    //     (ID3D11DeviceContext *)pw_get_dx11_device_context(gui->pw);
-    // state->render_target_view =
-    //     (ID3D11RenderTargetView *)pw_get_dx11_render_target_view(gui->pw);
-    // state->depth_stencil_view =
-    //     (ID3D11DepthStencilView *)pw_get_dx11_depth_stencil_view(gui->pw);
 
     IMGUI_CHECKVERSION();
 
@@ -72,25 +56,32 @@ void imgui_start(GUI *gui) {
     ImGui::StyleColorsDark();
 
     // Setup scaling
+    //
+    float scale = pw_get_content_scale_factor(gui->pw);
     ImGuiStyle &style = ImGui::GetStyle();
-    style.ScaleAllSizes(
-        main_scale); // Bake a fixed style scale. (until we have a solution for
-                     // dynamic style scaling, changing this requires resetting
-                     // Style + calling this again)
-    style.FontScaleDpi =
-        main_scale; // Set initial font scale. (using
-                    // io.ConfigDpiScaleFonts=true makes this unnecessary. We
-                    // leave both here for documentation purpose)
+    style.ScaleAllSizes(scale);
+    style.FontScaleDpi = scale;
 
     // Setup Platform/Renderer backends
     ImGui_ImplWin32_Init((HWND)pw_get_native_window(gui->pw));
-    // ImGui_ImplDX11_Init(state->d3d_device, state->d3d_device_context);
     ImGui_ImplDX11_Init(
         (ID3D11Device *)pw_get_dx11_device(gui->pw),
         (ID3D11DeviceContext *)pw_get_dx11_device_context(gui->pw));
 }
 
-void imgui_deinit(GUI *gui) {
+void imgui_set_scale(GUI *gui, float scale) {
+    ImGuiState *state = gui->imgui_state;
+    CPLUG_LOG_ASSERT(state->imgui_context != NULL)
+    ImGui::SetCurrentContext(state->imgui_context);
+
+    ImGui::StyleColorsDark();
+
+    ImGuiStyle &style = ImGui::GetStyle();
+    style.ScaleAllSizes(scale);
+    style.FontScaleDpi = scale;
+}
+
+void imgui_stop(GUI *gui) {
     ImGuiState *state = gui->imgui_state;
     ImGui::SetCurrentContext(state->imgui_context);
     ImGui_ImplDX11_Shutdown();
@@ -104,9 +95,15 @@ void imgui_tick(GUI *gui) {
     ImGuiState *state = gui->imgui_state;
     ImGui::SetCurrentContext(state->imgui_context);
 
+    float scale = pw_get_content_scale_factor(gui->pw);
+    float width = static_cast<float>(gui->normalized_width) * scale;
+    float height = static_cast<float>(gui->normalized_height) * scale;
+
     // Start the Dear ImGui frame
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
+    // cplug_log("g.FrameCount: %d, g.FrameCountEnded: %d",
+    // state->imgui_context->FrameCount, state->imgui_context->FrameCountEnded);
     ImGui::NewFrame();
     ImGui::PushFont(state->font, 18);
     ImGuiStyle &style = ImGui::GetStyle();
@@ -120,9 +117,7 @@ void imgui_tick(GUI *gui) {
     style.ChildRounding = 10.0f;
 
     ImGui::SetNextWindowPos({0, 0});
-    ImGui::SetNextWindowSize(
-        {static_cast<float>(gui->plugin->width * gui->scale),
-         static_cast<float>(gui->plugin->height * gui->scale)});
+    ImGui::SetNextWindowSize({width, height});
     ImGui::Begin("Demo Plugin", 0,
                  ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
 
@@ -141,8 +136,16 @@ void imgui_tick(GUI *gui) {
     ImGuiIO &io = ImGui::GetIO();
     ImGui::Text("Application average %.3f ms/frame (%.1f FPS)",
                 1000.0f / io.Framerate, io.Framerate);
-    ImGui::Text("width: %.3d, height: %.3d, scale: %.3f", gui->plugin->width,
-                gui->plugin->height, gui->scale);
+    // ImGui::Text("width: %.3f, height: %.3f, scale: %.3f", width, height,
+    // scale);
+    //
+    // size_t bufsize = sizeof(int16_t) * 2 *
+    //                  128; // 128 character utf16 (character can be 2 units)
+    // char *name_buf = (char *)PW_MALLOC(bufsize);
+    // gui->plugin->hostContext->getHostName(gui->plugin->hostContext, name_buf,
+    //                                       bufsize);
+    // ImGui::Text("host name: %s", name_buf);
+    // PW_FREE(name_buf);
     ImGui::End();
     ImGui::PopFont();
 
@@ -170,10 +173,6 @@ void imgui_handle_event(GUI *gui, const PWEvent *event) {
     ImGui::SetCurrentContext(state->imgui_context);
     ImGuiIO &io = ImGui::GetIO();
     switch (event->type) {
-    // case PW_EVENT_RESIZE_UPDATE:
-    //   // imgui_deinit(gui);
-    //   // imgui_init(gui);
-    //   break;
     case PW_EVENT_MOUSE_MOVE:
         io.AddMousePosEvent(event->mouse.x, event->mouse.y);
         state->mouse_x = (int)event->mouse.x;

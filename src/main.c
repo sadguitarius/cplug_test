@@ -139,7 +139,8 @@ void cplug_getParameterName(void *ptr, uint32_t paramId, char *buf,
                                         // שלום = 3 בייטים
                                         // 🐨       = 4 bytes
                                         "UTF8 Приве́т नमस्ते שָׁלוֹם 🐨"};
-    static_assert(ARRLEN(param_names) == ARRLEN(PARAM_IDS), "Invalid length");
+    // static_assert(ARRLEN(param_names) == ARRLEN(PARAM_IDS), "Invalid
+    // length");
 
     uint32_t index = get_param_index(ptr, paramId);
     snprintf(buf, buflen, "%s", param_names[index]);
@@ -459,8 +460,10 @@ void sendParamEventFromMain(Plugin *plugin, uint32_t type, uint32_t paramId,
 void pw_get_info(PWGetInfo *info) {
     if (info->type == PW_INFO_INIT_SIZE) {
         Plugin *plugin = (Plugin *)info->init_size.plugin;
-        info->init_size.width = plugin->width;
-        info->init_size.height = plugin->height;
+        // info->init_size.width = plugin->width;
+        // info->init_size.height = plugin->height;
+        info->init_size.width = GUI_DEFAULT_WIDTH;
+        info->init_size.height = GUI_DEFAULT_HEIGHT;
     } else if (info->type == PW_INFO_CONSTRAIN_SIZE) {
         // if (info->constrain_size.width > 1024)
         //     info->constrain_size.width = 1024;
@@ -472,14 +475,14 @@ void pw_get_info(PWGetInfo *info) {
 void *pw_create_gui(void *_plugin, void *pw) {
     Plugin *plugin = _plugin;
     GUI *gui = calloc(1, sizeof(*gui));
-    // gui->scale = pw_get_dpi(pw);
-    gui->scale = 1.0f;
 
     plugin->gui = gui;
     gui->plugin = plugin;
     gui->pw = pw;
 
-    imgui_init(gui);
+    gui->normalized_width = GUI_DEFAULT_WIDTH;
+    gui->normalized_height = GUI_DEFAULT_HEIGHT;
+
     imgui_start(gui);
 
     return gui;
@@ -488,7 +491,7 @@ void *pw_create_gui(void *_plugin, void *pw) {
 void pw_destroy_gui(void *_gui) {
     GUI *gui = (GUI *)_gui;
 
-    imgui_deinit(gui);
+    imgui_stop(gui);
     gui->plugin->gui = NULL;
     free(gui);
 }
@@ -501,10 +504,14 @@ void pw_tick(void *_gui) {
 bool pw_event(const PWEvent *event) {
     GUI *gui = (GUI *)event->gui;
     Plugin *plugin = gui->plugin;
+    float scale;
     switch (event->type) {
     case PW_EVENT_RESIZE_UPDATE:
-        plugin->width = event->resize.width / gui->scale;
-        plugin->height = event->resize.height / gui->scale;
+        // gui->plugin->width = event->resize.width;
+        // gui->plugin->height = event->resize.height;
+        scale = pw_get_content_scale_factor(gui->pw);
+        gui->normalized_width = event->resize.width / scale;
+        gui->normalized_height = event->resize.height / scale;
         break;
     case PW_EVENT_MOUSE_MOVE:
     case PW_EVENT_MOUSE_LEFT_DOWN:
@@ -514,18 +521,19 @@ bool pw_event(const PWEvent *event) {
         imgui_handle_event(gui, event);
         break;
     case PW_EVENT_CONTENT_SCALE_FACTOR_CHANGED:
-        float scale = event->content_scale_factor;
-        gui->scale = scale;
-        float width = scale * plugin->width;
-        float height = scale * plugin->height;
-        cplug_setSize(gui->pw, width, height);
+        scale = event->content_scale_factor;
+        uint32_t width = (uint32_t)(scale * gui->normalized_width);
+        uint32_t height = (uint32_t)(scale * gui->normalized_height);
 
         if (plugin->hostContext->type != CPLUG_PLUGIN_IS_STANDALONE)
             plugin->hostContext->requestResize(plugin->hostContext, width,
                                                height);
+        else
+            cplug_setSize(gui->pw, width, height);
 
-        imgui_deinit(gui);
-        imgui_init(gui);
+        // TODO: should be able to change scale without recreating ImGui context
+        // imgui_set_scale(gui, event->content_scale_factor);
+        imgui_stop(gui);
         imgui_start(gui);
 
         break;

@@ -30,6 +30,13 @@
       "program": "C:/Program Files/Propellerhead/Reason 13/Reason.exe"
     },
     {
+      "name": "Launch lldb-dap Renoise",
+      "type": "lldb-dap",
+      "request": "launch",
+      "cwd": "${fileDirname}",
+      "program": "C:/Program Files/Renoise 3.5.4/Renoise.exe"
+    },
+    {
       "name": "Launch lldb-dap Standalone",
       "type": "lldb-dap",
       "request": "launch",
