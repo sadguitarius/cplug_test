@@ -3,5 +3,5 @@
 	url = https://github.com/ocornut/imgui.git
 [submodule "lib/CPLUG"]
 	path = lib/CPLUG
-	url = https://github.com/Tremus/CPLUG.git
-	branch = develop
+	url = https://github.com/sadguitarius/CPLUG.git
+	branch = windows-scaling
