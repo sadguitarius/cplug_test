@@ -40,15 +40,14 @@ void imgui_start(GUI *gui) {
     state->font = io.Fonts->AddFontFromMemoryCompressedTTF(
         Iosevka_compressed_data, Iosevka_compressed_size, 36);
 
+
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
 
     // Setup scaling
     //
     float scale = pw_get_content_scale_factor(gui->pw);
-    ImGuiStyle &style = ImGui::GetStyle();
-    style.ScaleAllSizes(scale);
-    style.FontScaleDpi = scale;
+    imgui_set_scale(gui, scale);
 
     // Setup Platform/Renderer backends
     ImGui_ImplWin32_Init(pw_get_native_window(gui->pw));
@@ -61,8 +60,6 @@ void imgui_set_scale(GUI *gui, float scale) {
     ImGuiState *state = gui->imgui_state;
     CPLUG_LOG_ASSERT(state->imgui_context != NULL)
     ImGui::SetCurrentContext(state->imgui_context);
-
-    ImGui::StyleColorsDark();
 
     ImGuiStyle &style = ImGui::GetStyle();
     style.ScaleAllSizes(scale);
