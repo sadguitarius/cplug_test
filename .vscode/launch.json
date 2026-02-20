@@ -61,19 +61,6 @@
       "type": "cppvsdbg",
       "request": "attach",
       "processId": "${command:pickProcess}"
-    },
-    {
-      "name": "Launch cppdbg nvim",
-      "type": "cppdbg",
-      "request": "launch",
-      "cwd": "${fileDirname}",
-      "program": "C:/ProgramData/Ableton/Live 12 Suite/Program/Ableton Live 12 Suite.exe"
-    },
-    {
-      "name": "Attach cppdbg nvim",
-      "type": "cppdbg",
-      "request": "attach",
-      "program": "${command:pickProcess}"
     }
   ]
 }

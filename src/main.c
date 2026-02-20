@@ -531,10 +531,7 @@ bool pw_event(const PWEvent *event) {
         else
             cplug_setSize(gui->pw, width, height);
 
-        // TODO: should be able to change scale without recreating ImGui context
-        // imgui_set_scale(gui, event->content_scale_factor);
-        imgui_stop(gui);
-        imgui_start(gui);
+        imgui_set_scale(gui, event->content_scale_factor);
 
         break;
     default:

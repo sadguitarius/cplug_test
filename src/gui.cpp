@@ -1,23 +1,11 @@
 #include "defs.h"
-#include "imgui_internal.h"
-// #include "imgui_internal.h"
-#include <cassert>
 #include <cplug.h>
 #include <cplug_extensions/window.h>
 
-// #include <cstdint>
-#include <cstdint>
 #include <imgui.h>
 #include <imgui_impl_win32.h>
 #include <imgui_impl_dx11.h>
 #include <d3d11.h>
-#include <dxgi.h>
-#include <threads.h>
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
-#include <GL/gl.h>
 
 // Data
 struct ImGuiState {
@@ -63,7 +51,7 @@ void imgui_start(GUI *gui) {
     style.FontScaleDpi = scale;
 
     // Setup Platform/Renderer backends
-    ImGui_ImplWin32_Init((HWND)pw_get_native_window(gui->pw));
+    ImGui_ImplWin32_Init(pw_get_native_window(gui->pw));
     ImGui_ImplDX11_Init(
         (ID3D11Device *)pw_get_dx11_device(gui->pw),
         (ID3D11DeviceContext *)pw_get_dx11_device_context(gui->pw));
@@ -102,8 +90,6 @@ void imgui_tick(GUI *gui) {
     // Start the Dear ImGui frame
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
-    // cplug_log("g.FrameCount: %d, g.FrameCountEnded: %d",
-    // state->imgui_context->FrameCount, state->imgui_context->FrameCountEnded);
     ImGui::NewFrame();
     ImGui::PushFont(state->font, 18);
     ImGuiStyle &style = ImGui::GetStyle();
@@ -136,16 +122,6 @@ void imgui_tick(GUI *gui) {
     ImGuiIO &io = ImGui::GetIO();
     ImGui::Text("Application average %.3f ms/frame (%.1f FPS)",
                 1000.0f / io.Framerate, io.Framerate);
-    // ImGui::Text("width: %.3f, height: %.3f, scale: %.3f", width, height,
-    // scale);
-    //
-    // size_t bufsize = sizeof(int16_t) * 2 *
-    //                  128; // 128 character utf16 (character can be 2 units)
-    // char *name_buf = (char *)PW_MALLOC(bufsize);
-    // gui->plugin->hostContext->getHostName(gui->plugin->hostContext, name_buf,
-    //                                       bufsize);
-    // ImGui::Text("host name: %s", name_buf);
-    // PW_FREE(name_buf);
     ImGui::End();
     ImGui::PopFont();
 
