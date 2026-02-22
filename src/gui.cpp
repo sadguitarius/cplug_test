@@ -2,10 +2,13 @@
 #include <cplug.h>
 #include <cplug_extensions/window.h>
 
+#include <cstdlib>
 #include <imgui.h>
 #include <imgui_impl_win32.h>
 #include <imgui_impl_dx11.h>
 #include <d3d11.h>
+
+#include <pathcch.h >
 
 // Data
 struct ImGuiState {
@@ -23,6 +26,22 @@ struct ImGuiState {
 };
 
 void imgui_start(GUI *gui) {
+    // TODO: need cross-platform solution for this
+    // make library function?
+    wchar_t font_path_w[MAX_PATH];
+    char font_path[MAX_PATH * 2];
+    HMODULE hm = NULL;
+
+    CPLUG_LOG_ASSERT(
+        GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                              GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                          (LPCSTR)&imgui_start, &hm) != 0);
+    CPLUG_LOG_ASSERT(GetModuleFileNameW(hm, font_path_w, sizeof(font_path_w)) != 0);
+    PathCchRemoveFileSpec(font_path_w, MAX_PATH);
+    const wchar_t *font_name = L"Iosevka-Regular.ttf";
+    PathCchCombine(font_path_w, MAX_PATH, font_path_w, font_name);
+    wcstombs(font_path, font_path_w, MAX_PATH);
+
     ImGuiState *state = (ImGuiState *)calloc(1, sizeof(*state));
 
     state->clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
@@ -37,9 +56,8 @@ void imgui_start(GUI *gui) {
 
     ImGuiIO &io = ImGui::GetIO();
     io.IniFilename = NULL;
-    state->font = io.Fonts->AddFontFromMemoryCompressedTTF(
-        Iosevka_compressed_data, Iosevka_compressed_size, 36);
 
+    state->font = io.Fonts->AddFontFromFileTTF(font_path);
 
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();

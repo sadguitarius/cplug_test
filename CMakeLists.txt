@@ -134,7 +134,6 @@ elseif(WIN32)
     add_library(${PROJECT_NAME}_plugin MODULE
         src/main.c
         src/gui.cpp
-        src/iosevka.c
         lib/CPLUG/src/cplug_clap.c
         lib/CPLUG/src/cplug_vst3.c
         lib/CPLUG/src/cplug_extensions/window_win.c
@@ -146,7 +145,7 @@ elseif(WIN32)
         lib/imgui/backends/imgui_impl_dx11.cpp
         lib/imgui/backends/imgui_impl_win32.cpp
     )
-    target_link_libraries(${PROJECT_NAME}_plugin PRIVATE dwmapi shcore ${OPENGL_LIBRARIES} d3d11 dxguid)
+    target_link_libraries(${PROJECT_NAME}_plugin PRIVATE dwmapi shcore pathcch ${OPENGL_LIBRARIES} d3d11 dxguid)
     set_target_properties(${PROJECT_NAME}_plugin PROPERTIES
         OUTPUT_NAME ${PROJECT_NAME}_plugin
         PDB_NAME ${PROJECT_NAME}_plugin
@@ -163,6 +162,8 @@ elseif(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_BINARY_DIR}\\${CMAKE_BUILD_TYPE}\\${PROJECT_NAME}_plugin.dll" "${VST3_BUILD_PATH}\\Contents\\x86_64-win\\${PROJECT_NAME}.vst3"
         COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}\\src\\PlugIn.ico"                     "${VST3_BUILD_PATH}\\PlugIn.ico"
         COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}\\src\\desktop.ini.in"                 "${VST3_BUILD_PATH}\\desktop.ini"
+        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/src/Iosevka-Regular.ttf" "${VST3_BUILD_PATH}/Contents/x86_64-win/Iosevka-Regular.ttf"
+
         COMMAND attrib +s +h ${VST3_BUILD_PATH}\\desktop.ini
         COMMAND attrib +s +h ${VST3_BUILD_PATH}\\PlugIn.ico
         COMMAND attrib +s ${VST3_BUILD_PATH}
@@ -188,7 +189,6 @@ if (WIN32)
     add_executable(${PROJECT_NAME}_app WIN32
         src/main.c
         src/gui.cpp
-        src/iosevka.c
         lib/CPLUG/src/cplug_standalone_win.c
         lib/CPLUG/src/cplug_extensions/window_win.c
         lib/imgui/imgui.cpp
@@ -199,7 +199,10 @@ if (WIN32)
         lib/imgui/backends/imgui_impl_dx11.cpp
         lib/imgui/backends/imgui_impl_win32.cpp
     )
-    target_link_libraries(${PROJECT_NAME}_app PRIVATE dwmapi shcore ${OPENGL_LIBRARIES} d3d11 dxguid)
+    target_link_libraries(${PROJECT_NAME}_app PRIVATE dwmapi shcore pathcch ${OPENGL_LIBRARIES} d3d11 dxguid)
+    add_custom_command(TARGET ${PROJECT_NAME}_plugin POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/src/Iosevka-Regular.ttf" "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}/Iosevka-Regular.ttf"
+        )
 elseif (APPLE)
     add_executable(${PROJECT_NAME}_app MACOSX_BUNDLE
         lib/CPLUG/src/cplug_standalone_osx.m
@@ -226,7 +229,6 @@ if (WIN32 AND CMAKE_BUILD_TYPE MATCHES Debug)
     add_library(${HOTRELOAD_LIB_NAME} MODULE
         src/main.c
         src/gui.cpp
-        src/iosevka.c
         lib/CPLUG/src/cplug_extensions/window_win.c
         lib/imgui/imgui.cpp
         lib/imgui/imgui_draw.cpp
@@ -236,7 +238,7 @@ if (WIN32 AND CMAKE_BUILD_TYPE MATCHES Debug)
         lib/imgui/backends/imgui_impl_dx11.cpp
         lib/imgui/backends/imgui_impl_win32.cpp
     )
-    target_link_libraries(${HOTRELOAD_LIB_NAME} PRIVATE dwmapi shcore ${OPENGL_LIBRARIES} d3d11 dxguid)
+    target_link_libraries(${HOTRELOAD_LIB_NAME} PRIVATE dwmapi shcore pathcch ${OPENGL_LIBRARIES} d3d11 dxguid)
     target_compile_definitions(${HOTRELOAD_LIB_NAME} PRIVATE CPLUG_SHARED)
 
     add_executable(${PROJECT_NAME}_hotreload WIN32
