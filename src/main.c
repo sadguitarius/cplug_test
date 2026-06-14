@@ -12,8 +12,7 @@
 #include <dcimgui_impl_win32.h>
 #include <dcimgui_impl_dx11.h>
 #else
-#include <dcimgui_impl_glfw.h>
-#include <dcimgui_impl_opengl3.h>
+#include <metal_backend.h>
 #endif // _WIN32
 
 #ifdef _WIN32
@@ -127,6 +126,10 @@ typedef struct GUI {
     double dragCurrentParamNormalised;
 
     ImGuiContext *imgui_context;
+
+#ifndef _WIN32
+    void *metal_backend; // opaque MetalBackend* on macOS (see metal_backend.h)
+#endif
 
     ImFont *font;
 
@@ -617,8 +620,15 @@ void *pw_create_gui(void *_plugin, void *pw) {
     path[dirname_length + 1] = '\0';
     strcat(path, font_name);
     cplug_log("font path: %s\n", path);
-    gui->font =
-        ImFontAtlas_AddFontFromFileTTF(io->Fonts, path, 0.0f, NULL, NULL);
+    FILE *font_file = fopen(path, "rb");
+    if (font_file) {
+        fclose(font_file);
+        gui->font =
+            ImFontAtlas_AddFontFromFileTTF(io->Fonts, path, 0.0f, NULL, NULL);
+    } else {
+        cplug_log("font not found at %s, using default\n", path);
+        gui->font = NULL;
+    }
     free(path);
 
     // Setup Dear ImGui style
@@ -653,9 +663,7 @@ void *pw_create_gui(void *_plugin, void *pw) {
         (ID3D11Device *)pw_get_dx11_device(gui->pw),
         (ID3D11DeviceContext *)pw_get_dx11_device_context(gui->pw));
 #else
-    // TODO: need correct glfw/opengl3 implementation
-    cImGui_ImplGlfw_InitForOpenGL(pw_get_native_window(gui->pw), true);
-    cImGui_ImplOpenGL3_Init();
+    gui->metal_backend = metal_backend_init(gui->pw);
 #endif // _WIN32
 
     return gui;
@@ -669,9 +677,8 @@ void pw_destroy_gui(void *_gui) {
     cImGui_ImplDX11_Shutdown();
     cImGui_ImplWin32_Shutdown();
 #else
-    // TODO: need correct glfw/opengl3 implementation
-    cImGui_ImplOpenGL3_Shutdown();
-    cImGui_ImplGlfw_Shutdown();
+    metal_backend_shutdown(gui->metal_backend);
+    gui->metal_backend = NULL;
 #endif // _WIN32
     ImGui_DestroyContext(NULL);
 
@@ -688,17 +695,23 @@ void pw_tick(void *_gui) {
     float width = (float)(gui->normalized_width) * scale;
     float height = (float)(gui->normalized_height) * scale;
 
+    ImGuiIO *io = ImGui_GetIO();
+
     // Start the Dear ImGui frame
 #ifdef _WIN32
     cImGui_ImplDX11_NewFrame();
     cImGui_ImplWin32_NewFrame();
 #else
-    // TODO: need correct glfw/opengl3 implementation
-    cImGui_ImplOpenGL3_NewFrame();
-    cImGui_ImplGlfw_NewFrame();
+    if (!metal_backend_new_frame(gui->metal_backend, gui->pw))
+        return;
+    float backing = pw_get_backing_scale_factor(gui->pw);
+    io->DisplaySize = (ImVec2){width, height};
+    io->DisplayFramebufferScale = (ImVec2){backing, backing};
+    io->DeltaTime = 1.0f / 60.0f;
 #endif
     ImGui_NewFrame();
-    ImGui_PushFontFloat(gui->font, 18.0f);
+    if (gui->font)
+        ImGui_PushFontFloat(gui->font, 18.0f);
     ImGuiStyle *style = ImGui_GetStyle();
     style->WindowPadding = (ImVec2){20.0f, 20.0f};
     style->FrameRounding = 10.0f;
@@ -726,11 +739,11 @@ void pw_tick(void *_gui) {
     ImGui_Text("f = %f, mouse X = %4d, mouse Y = %4d, button = %d", gui->f,
                gui->mouse_x, gui->mouse_y, gui->mouse_button_pressed);
 
-    ImGuiIO *io = ImGui_GetIO();
     ImGui_Text("Application average %.3f ms/frame (%.1f FPS)",
                1000.0f / io->Framerate, io->Framerate);
     ImGui_End();
-    ImGui_PopFont();
+    if (gui->font)
+        ImGui_PopFont();
 
     // Rendering
     ImGui_Render();
@@ -750,7 +763,8 @@ void pw_tick(void *_gui) {
     d3d11_ClearRenderTargetView(context, target_view, clear_color_with_alpha);
     cImGui_ImplDX11_RenderDrawData(ImGui_GetDrawData());
 #else
-    // TODO: need glfw/opengl3 implementation
+    metal_backend_render(gui->metal_backend, gui->pw, ImGui_GetDrawData(),
+                         clear_color_with_alpha);
 #endif
 }
 

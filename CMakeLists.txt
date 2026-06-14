@@ -16,6 +16,9 @@ string(REPLACE "/" "\\\\" BINARY_DIR_WIN ${CMAKE_BINARY_DIR})
 if (APPLE)
     enable_language(OBJC)
     set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
+    add_compile_definitions(PW_METAL)
+    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/lib/imgui/backends/imgui_impl_metal.mm
+        PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
@@ -46,11 +49,31 @@ if (WIN32)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS PW_DX11)
 endif()
 
-# settings used across all formats
-include_directories(lib/CPLUG/src lib/imgui lib/imgui/backends lib/dcimgui lib/dcimgui/backends lib/whereami/src)
+include_directories(lib/CPLUG/src lib/imgui lib/imgui/backends lib/dcimgui lib/dcimgui/backends lib/whereami/src lib/custom_bindings)
 
-# find_package(OpenGL REQUIRED)
-set(OPENGL_LIBRARIES)
+set(GUI_SOURCES
+    lib/imgui/imgui.cpp
+    lib/imgui/imgui_demo.cpp
+    lib/imgui/imgui_draw.cpp
+    lib/imgui/imgui_tables.cpp
+    lib/imgui/imgui_widgets.cpp
+    lib/dcimgui/dcimgui.cpp
+    lib/dcimgui/dcimgui_internal.cpp
+    lib/whereami/src/whereami.c
+)
+if (APPLE)
+    list(APPEND GUI_SOURCES
+        lib/imgui/backends/imgui_impl_metal.mm
+        lib/custom_bindings/metal_backend.mm
+    )
+elseif (WIN32)
+    list(APPEND GUI_SOURCES
+        lib/imgui/backends/imgui_impl_dx11.cpp
+        lib/imgui/backends/imgui_impl_win32.cpp
+        lib/dcimgui/backends/dcimgui_impl_dx11.cpp
+        lib/dcimgui/backends/dcimgui_impl_win32.cpp
+    )
+endif()
 
 set(PRODUCT_NAME "CPLUG Example")
 set(PRODUCT_COPYRIGHT CPLUG)
@@ -95,13 +118,14 @@ endfunction()
 # All Plugin formats in one
 if (APPLE)
     add_library(${PROJECT_NAME}_plugin MODULE
-        src/main.m
+        src/main.c
         lib/CPLUG/src/cplug_auv2.c
         lib/CPLUG/src/cplug_clap.c
         lib/CPLUG/src/cplug_vst3.c
         lib/CPLUG/src/cplug_extensions/window_osx.m
+        ${GUI_SOURCES}
     )
-    target_link_libraries(${PROJECT_NAME}_plugin PRIVATE "-framework AudioToolbox -framework Cocoa") # -framework AudioToolbox not actually required...
+    target_link_libraries(${PROJECT_NAME}_plugin PRIVATE "-framework AudioToolbox -framework Cocoa -framework Metal -framework MetalKit -framework QuartzCore") # -framework AudioToolbox not actually required...
 
     configure_info_plist(${PROJECT_NAME}_plugin ${PLUGIN_BUNDLE_ID} "BNDL" "clap")
 
@@ -115,6 +139,8 @@ if (APPLE)
     )
 
     add_custom_command(TARGET ${PROJECT_NAME}_plugin POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/src/Iosevka-Regular.ttf" "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}/${PROJECT_NAME}.clap/Contents/MacOS/Iosevka-Regular.ttf"
+
         COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}/${PROJECT_NAME}.vst3"
         COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}/${PROJECT_NAME}.component"
 
@@ -136,18 +162,7 @@ elseif(WIN32)
         lib/CPLUG/src/cplug_clap.c
         lib/CPLUG/src/cplug_vst3.c
         lib/CPLUG/src/cplug_extensions/window_win.c
-        lib/imgui/imgui.cpp
-        lib/imgui/imgui_demo.cpp
-        lib/imgui/imgui_draw.cpp
-        lib/imgui/imgui_tables.cpp
-        lib/imgui/imgui_widgets.cpp
-        lib/imgui/backends/imgui_impl_dx11.cpp
-        lib/imgui/backends/imgui_impl_win32.cpp
-        lib/dcimgui/dcimgui.cpp
-        lib/dcimgui/dcimgui_internal.cpp
-        lib/dcimgui/backends/dcimgui_impl_dx11.cpp
-        lib/dcimgui/backends/dcimgui_impl_win32.cpp
-        lib/whereami/src/whereami.c
+        ${GUI_SOURCES}
     )
     target_link_libraries(${PROJECT_NAME}_plugin PRIVATE dwmapi shcore pathcch shlwapi ${OPENGL_LIBRARIES} d3d11 dxguid)
     set_target_properties(${PROJECT_NAME}_plugin PROPERTIES
@@ -193,18 +208,7 @@ if (WIN32)
         src/main.c
         lib/CPLUG/src/cplug_standalone_win.c
         lib/CPLUG/src/cplug_extensions/window_win.c
-        lib/imgui/imgui.cpp
-        lib/imgui/imgui_demo.cpp
-        lib/imgui/imgui_draw.cpp
-        lib/imgui/imgui_tables.cpp
-        lib/imgui/imgui_widgets.cpp
-        lib/imgui/backends/imgui_impl_dx11.cpp
-        lib/imgui/backends/imgui_impl_win32.cpp
-        lib/dcimgui/dcimgui.cpp
-        lib/dcimgui/dcimgui_internal.cpp
-        lib/dcimgui/backends/dcimgui_impl_dx11.cpp
-        lib/dcimgui/backends/dcimgui_impl_win32.cpp
-        lib/whereami/src/whereami.c
+        ${GUI_SOURCES}
     )
     target_link_libraries(${PROJECT_NAME}_app PRIVATE dwmapi shcore pathcch shlwapi ${OPENGL_LIBRARIES} d3d11 dxguid)
     add_custom_command(TARGET ${PROJECT_NAME}_plugin POST_BUILD
@@ -212,14 +216,19 @@ if (WIN32)
         )
 elseif (APPLE)
     add_executable(${PROJECT_NAME}_app MACOSX_BUNDLE
+        src/main.c
         lib/CPLUG/src/cplug_standalone_osx.m
         lib/CPLUG/src/cplug_extensions/window_osx.m
-        src/main.m)
-    target_link_libraries(${PROJECT_NAME}_app PRIVATE "-framework Cocoa -framework CoreMIDI -framework CoreAudio -framework CoreServices")
+        ${GUI_SOURCES})
+    target_link_libraries(${PROJECT_NAME}_app PRIVATE "-framework Cocoa -framework CoreMIDI -framework CoreAudio -framework CoreServices -framework Metal -framework MetalKit -framework QuartzCore")
     configure_info_plist(${PROJECT_NAME}_app ${APP_BUNDLE_ID} "APPL" "app")
 
     file(TOUCH_NOCREATE "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}/${PROJECT_NAME}.app/Contents/PkgInfo")
     file(WRITE "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}/${PROJECT_NAME}.app/Contents/PkgInfo" "APPL????")
+
+    add_custom_command(TARGET ${PROJECT_NAME}_app POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/src/Iosevka-Regular.ttf" "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}/${PROJECT_NAME}.app/Contents/MacOS/Iosevka-Regular.ttf"
+    )
 endif()
 
 
@@ -236,18 +245,7 @@ if (WIN32 AND CMAKE_BUILD_TYPE MATCHES Debug)
     add_library(${HOTRELOAD_LIB_NAME} MODULE
         src/main.c
         lib/CPLUG/src/cplug_extensions/window_win.c
-        lib/imgui/imgui.cpp
-        lib/imgui/imgui_demo.cpp
-        lib/imgui/imgui_draw.cpp
-        lib/imgui/imgui_tables.cpp
-        lib/imgui/imgui_widgets.cpp
-        lib/imgui/backends/imgui_impl_dx11.cpp
-        lib/imgui/backends/imgui_impl_win32.cpp
-        lib/dcimgui/dcimgui.cpp
-        lib/dcimgui/dcimgui_internal.cpp
-        lib/dcimgui/backends/dcimgui_impl_dx11.cpp
-        lib/dcimgui/backends/dcimgui_impl_win32.cpp
-        lib/whereami/src/whereami.c
+        ${GUI_SOURCES}
     )
     target_link_libraries(${HOTRELOAD_LIB_NAME} PRIVATE dwmapi shcore pathcch shlwapi ${OPENGL_LIBRARIES} d3d11 dxguid)
     target_compile_definitions(${HOTRELOAD_LIB_NAME} PRIVATE CPLUG_SHARED)
@@ -264,8 +262,11 @@ if (WIN32 AND CMAKE_BUILD_TYPE MATCHES Debug)
     # Forces plugin to be built before the host
     add_dependencies(${PROJECT_NAME}_hotreload ${HOTRELOAD_LIB_NAME})
 elseif (APPLE AND CMAKE_BUILD_TYPE MATCHES Debug)
-    add_library(${HOTRELOAD_LIB_NAME} MODULE lib/CPLUG/src/cplug_extensions/window_osx.m src/main.m)
-    target_link_libraries(${HOTRELOAD_LIB_NAME} PRIVATE "-framework Cocoa")
+    add_library(${HOTRELOAD_LIB_NAME} MODULE
+        src/main.c
+        lib/CPLUG/src/cplug_extensions/window_osx.m
+        ${GUI_SOURCES})
+    target_link_libraries(${HOTRELOAD_LIB_NAME} PRIVATE "-framework Cocoa -framework Metal -framework MetalKit -framework QuartzCore")
 
     add_executable(${PROJECT_NAME}_hotreload MACOSX_BUNDLE
         lib/CPLUG/src/cplug_standalone_osx.m
