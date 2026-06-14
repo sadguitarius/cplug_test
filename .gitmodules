@@ -5,3 +5,6 @@
 	path = lib/CPLUG
 	url = https://github.com/sadguitarius/CPLUG.git
 	branch = windows-scaling
+[submodule "lib/whereami"]
+	path = lib/whereami
+	url = https://github.com/gpakosz/whereami.git

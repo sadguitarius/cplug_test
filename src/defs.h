@@ -2,6 +2,7 @@
 #define DEFS_H
 
 // #include <cstdint>
+#include <cstdint>
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -1,15 +1,28 @@
-#include "defs.h"
 #include <cplug.h>
 #include <cplug_extensions/window.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
 
+#include <whereami.h>
+
+#include <dcimgui.h>
 #ifdef _WIN32
+#include <d3d11.h>
+#include <dcimgui_impl_win32.h>
+#include <dcimgui_impl_dx11.h>
+#else
+#include <dcimgui_impl_glfw.h>
+#include <dcimgui_impl_opengl3.h>
+#endif // _WIN32
+
+#ifdef _WIN32
+#include <ShellScalingApi.h>
+
 #define my_assert(cond) (cond) ? (void)0 : __debugbreak()
 #else
 #define my_assert(cond) (cond) ? (void)0 : __builtin_debugtrap()
-#endif
+#endif // _WIN32
 
 // #if defined(_WIN32) && defined(__x86_64__)
 // https://softwareengineering.stackexchange.com/a/337251
@@ -33,14 +46,19 @@
 // #define RESTORE_DENORMALS fesetenv(&_fenv);
 // #endif
 
+#define ARRLEN(a)              (sizeof(a) / sizeof((a)[0]))
 #define CPLUG_EVENT_QUEUE_MASK (CPLUG_EVENT_QUEUE_SIZE - 1)
 
-// #define GUI_DEFAULT_WIDTH  1024
-// #define GUI_DEFAULT_HEIGHT 500
+static const uint32_t PARAM_IDS[] = {
+    'pf32',
+    'pi32',
+    'bool',
+    'utf8',
+};
+enum { NUM_PARAMS = ARRLEN(PARAM_IDS) };
+
 #define GUI_DEFAULT_WIDTH  512
 #define GUI_DEFAULT_HEIGHT 250
-// #define GUI_RATIO_X 16
-// #define GUI_RATIO_Y 9
 
 // returns 'CPLUG_NUM_PARAMS' on failure
 uint32_t get_param_index(void *ptr, uint32_t paramId) {
@@ -51,8 +69,75 @@ uint32_t get_param_index(void *ptr, uint32_t paramId) {
     return i;
 }
 
+typedef struct ParamInfo {
+    float min;
+    float max;
+    float defaultValue;
+    int flags;
+} ParamInfo;
+
+typedef struct Plugin {
+    CplugHostContext *hostContext;
+
+    ParamInfo paramInfo[NUM_PARAMS];
+
+    float sampleRate;
+    uint32_t maxBufferSize;
+
+    float paramValuesAudio[NUM_PARAMS];
+
+    float oscPhase; // 0-1
+    int midiNote;   // -1 == not playing, 0-127+ playing
+    float velocity; // 0-1
+
+    // GUI zone
+    struct GUI *gui;
+
+    float paramValuesMain[NUM_PARAMS];
+
+    // Single reader writer queue. Pretty sure atomics aren't required, but here
+    // anyway
+    cplug_atomic_i32 mainToAudioHead;
+    cplug_atomic_i32 mainToAudioTail;
+    CplugEvent mainToAudioQueue[CPLUG_EVENT_QUEUE_SIZE];
+
+    cplug_atomic_i32 audioToMainHead;
+    cplug_atomic_i32 audioToMainTail;
+    CplugEvent audioToMainQueue[CPLUG_EVENT_QUEUE_SIZE];
+} Plugin;
+
 void sendParamEventFromMain(Plugin *plugin, uint32_t type, uint32_t paramIdx,
                             double value);
+
+typedef struct GUI {
+    Plugin *plugin;
+    void *pw;
+#ifdef _WIN32
+    char uniqueClassName[64];
+#endif
+
+    uint32_t normalized_width;
+    uint32_t normalized_height;
+
+    bool mouseDragging;
+    uint32_t dragParamId;
+    int dragStartX;
+    int dragStartY;
+    double dragStartParamNormalised;
+    double dragCurrentParamNormalised;
+
+    ImGuiContext *imgui_context;
+
+    ImFont *font;
+
+    // Our state
+    ImVec4 clear_color;
+    int counter;
+    float f;
+    int mouse_x;
+    int mouse_y;
+    int mouse_button_pressed;
+} GUI;
 
 void cplug_libraryLoad() {};
 void cplug_libraryUnload() {};
@@ -93,9 +178,6 @@ void *cplug_createPlugin(CplugHostContext *ctx) {
     plugin->paramInfo[idx].defaultValue = 0.0f;
 
     plugin->midiNote = -1;
-
-    plugin->width = GUI_DEFAULT_WIDTH;
-    plugin->height = GUI_DEFAULT_HEIGHT;
 
     return plugin;
 }
@@ -457,6 +539,32 @@ void sendParamEventFromMain(Plugin *plugin, uint32_t type, uint32_t paramId,
 // GUI
 //
 
+#ifdef _WIN32
+static inline void
+d3d11_OMSetRenderTargets(ID3D11DeviceContext *self, UINT NumViews,
+                         ID3D11RenderTargetView *const *ppRenderTargetViews,
+                         ID3D11DepthStencilView *pDepthStencilView) {
+    self->lpVtbl->OMSetRenderTargets(self, NumViews, ppRenderTargetViews,
+                                     pDepthStencilView);
+}
+
+static inline void
+d3d11_ClearRenderTargetView(ID3D11DeviceContext *self,
+                            ID3D11RenderTargetView *pRenderTargetView,
+                            const FLOAT ColorRGBA[4]) {
+    self->lpVtbl->ClearRenderTargetView(self, pRenderTargetView, ColorRGBA);
+}
+#endif // _WIN32
+
+void imgui_set_scale(GUI *gui, float scale) {
+    CPLUG_LOG_ASSERT(gui->imgui_context != NULL)
+    ImGui_SetCurrentContext(gui->imgui_context);
+
+    ImGuiStyle *style = ImGui_GetStyle();
+    ImGuiStyle_ScaleAllSizes(style, scale);
+    style->FontScaleDpi = scale;
+}
+
 void pw_get_info(PWGetInfo *info) {
     if (info->type == PW_INFO_INIT_SIZE) {
         Plugin *plugin = (Plugin *)info->init_size.plugin;
@@ -483,7 +591,72 @@ void *pw_create_gui(void *_plugin, void *pw) {
     gui->normalized_width = GUI_DEFAULT_WIDTH;
     gui->normalized_height = GUI_DEFAULT_HEIGHT;
 
-    imgui_start(gui);
+    gui->clear_color = (ImVec4){0.45f, 0.55f, 0.60f, 1.00f};
+    gui->counter = 0;
+    gui->f = 0.0f;
+    gui->mouse_x = 0;
+    gui->mouse_y = 0;
+    gui->mouse_button_pressed = 0;
+
+    CIMGUI_CHECKVERSION();
+
+    ImGuiContext *imgui_context = ImGui_CreateContext(NULL);
+    ImGui_SetCurrentContext(imgui_context);
+    gui->imgui_context = imgui_context;
+
+    ImGuiIO *io = ImGui_GetIO();
+    io->IniFilename = NULL;
+
+    const char *font_name = "Iosevka-Regular.ttf";
+    char *path = NULL;
+    int length, dirname_length;
+    length = wai_getModulePath(NULL, 0, &dirname_length);
+    PW_ASSERT(length > 0);
+    path = (char *)malloc(length + 1 + strlen(font_name));
+    wai_getModulePath(path, length, &dirname_length);
+    path[dirname_length + 1] = '\0';
+    strcat(path, font_name);
+    cplug_log("font path: %s\n", path);
+    gui->font =
+        ImFontAtlas_AddFontFromFileTTF(io->Fonts, path, 0.0f, NULL, NULL);
+    free(path);
+
+    // Setup Dear ImGui style
+    ImGui_StyleColorsDark(NULL);
+
+    // TODO: try to get rid of this
+    // currently needed for hosts such as Reason that ignore VST3 scaling
+    // callbacks
+#ifdef _WIN32
+    DPI_AWARENESS awareness =
+        GetAwarenessFromDpiAwarenessContext(GetThreadDpiAwarenessContext());
+    if (awareness != DPI_AWARENESS_UNAWARE) {
+        HMONITOR monitor = MonitorFromWindow(pw_get_native_window(pw),
+                                             MONITOR_DEFAULTTONEAREST);
+        DEVICE_SCALE_FACTOR device_scale_factor;
+        HRESULT hr = GetScaleFactorForMonitor(monitor, &device_scale_factor);
+        PW_ASSERT(hr == S_OK);
+        float scale = device_scale_factor / 100.0f;
+        cplug_setScaleFactor(gui->pw, scale);
+        cplug_setSize(gui->pw, gui->normalized_width * scale,
+                      gui->normalized_height * scale);
+    }
+#endif // _WIN32
+
+    float scale = pw_get_content_scale_factor(gui->pw);
+    imgui_set_scale(gui, scale);
+
+    // Setup Platform/Renderer backends
+#ifdef _WIN32
+    cImGui_ImplWin32_Init(pw_get_native_window(gui->pw));
+    cImGui_ImplDX11_Init(
+        (ID3D11Device *)pw_get_dx11_device(gui->pw),
+        (ID3D11DeviceContext *)pw_get_dx11_device_context(gui->pw));
+#else
+    // TODO: need correct glfw/opengl3 implementation
+    cImGui_ImplGlfw_InitForOpenGL(pw_get_native_window(gui->pw), true);
+    cImGui_ImplOpenGL3_Init();
+#endif // _WIN32
 
     return gui;
 }
@@ -491,34 +664,137 @@ void *pw_create_gui(void *_plugin, void *pw) {
 void pw_destroy_gui(void *_gui) {
     GUI *gui = (GUI *)_gui;
 
-    imgui_stop(gui);
+    ImGui_SetCurrentContext(gui->imgui_context);
+#ifdef _WIN32
+    cImGui_ImplDX11_Shutdown();
+    cImGui_ImplWin32_Shutdown();
+#else
+    // TODO: need correct glfw/opengl3 implementation
+    cImGui_ImplOpenGL3_Shutdown();
+    cImGui_ImplGlfw_Shutdown();
+#endif // _WIN32
+    ImGui_DestroyContext(NULL);
+
     gui->plugin->gui = NULL;
     free(gui);
 }
 
 void pw_tick(void *_gui) {
     GUI *gui = (GUI *)_gui;
-    imgui_tick(gui);
+
+    ImGui_SetCurrentContext(gui->imgui_context);
+
+    float scale = pw_get_content_scale_factor(gui->pw);
+    float width = (float)(gui->normalized_width) * scale;
+    float height = (float)(gui->normalized_height) * scale;
+
+    // Start the Dear ImGui frame
+#ifdef _WIN32
+    cImGui_ImplDX11_NewFrame();
+    cImGui_ImplWin32_NewFrame();
+#else
+    // TODO: need correct glfw/opengl3 implementation
+    cImGui_ImplOpenGL3_NewFrame();
+    cImGui_ImplGlfw_NewFrame();
+#endif
+    ImGui_NewFrame();
+    ImGui_PushFontFloat(gui->font, 18.0f);
+    ImGuiStyle *style = ImGui_GetStyle();
+    style->WindowPadding = (ImVec2){20.0f, 20.0f};
+    style->FrameRounding = 10.0f;
+    style->FramePadding = (ImVec2){10.0f, 5.0f};
+    style->GrabRounding = 10.0f;
+    style->PopupRounding = 10.0f;
+    style->ScrollbarRounding = 10.0f;
+    style->TabRounding = 10.0f;
+    style->ChildRounding = 10.0f;
+
+    ImGui_SetNextWindowPos((ImVec2){0, 0}, 0);
+    ImGui_SetNextWindowSize((ImVec2){width, height}, 0);
+    ImGui_Begin("Demo Plugin", 0,
+                ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
+
+    ImGui_Text("This is some useful text.");
+    ImGui_SliderFloat("float", &gui->f, 0.0f, 1.0f);
+    ImGui_ColorEdit3("clear color", (float *)&gui->clear_color, 0);
+
+    if (ImGui_Button("Button"))
+        gui->counter++;
+
+    ImGui_SameLine();
+    ImGui_Text("counter = %d", gui->counter);
+    ImGui_Text("f = %f, mouse X = %4d, mouse Y = %4d, button = %d", gui->f,
+               gui->mouse_x, gui->mouse_y, gui->mouse_button_pressed);
+
+    ImGuiIO *io = ImGui_GetIO();
+    ImGui_Text("Application average %.3f ms/frame (%.1f FPS)",
+               1000.0f / io->Framerate, io->Framerate);
+    ImGui_End();
+    ImGui_PopFont();
+
+    // Rendering
+    ImGui_Render();
+    const float clear_color_with_alpha[4] = {
+        gui->clear_color.x * gui->clear_color.w,
+        gui->clear_color.y * gui->clear_color.w,
+        gui->clear_color.z * gui->clear_color.w, gui->clear_color.w};
+
+#ifdef _WIN32
+    ID3D11DeviceContext *context = pw_get_dx11_device_context(gui->pw);
+    ID3D11RenderTargetView *target_view =
+        pw_get_dx11_render_target_view(gui->pw);
+
+    d3d11_OMSetRenderTargets(
+        context, 1, &target_view,
+        (ID3D11DepthStencilView *)pw_get_dx11_depth_stencil_view(gui->pw));
+    d3d11_ClearRenderTargetView(context, target_view, clear_color_with_alpha);
+    cImGui_ImplDX11_RenderDrawData(ImGui_GetDrawData());
+#else
+    // TODO: need glfw/opengl3 implementation
+#endif
 }
 
 bool pw_event(const PWEvent *event) {
-    GUI *gui = (GUI *)event->gui;
+    GUI *gui = event->gui;
     Plugin *plugin = gui->plugin;
+    ImGuiIO *io;
     float scale;
     switch (event->type) {
     case PW_EVENT_RESIZE_UPDATE:
-        // gui->plugin->width = event->resize.width;
-        // gui->plugin->height = event->resize.height;
         scale = pw_get_content_scale_factor(gui->pw);
         gui->normalized_width = event->resize.width / scale;
         gui->normalized_height = event->resize.height / scale;
         break;
     case PW_EVENT_MOUSE_MOVE:
+        ImGui_SetCurrentContext(gui->imgui_context);
+        io = ImGui_GetIO();
+        ImGuiIO_AddMousePosEvent(io, event->mouse.x, event->mouse.y);
+        gui->mouse_x = (int)event->mouse.x;
+        gui->mouse_y = (int)event->mouse.y;
+        break;
     case PW_EVENT_MOUSE_LEFT_DOWN:
+        ImGui_SetCurrentContext(gui->imgui_context);
+        io = ImGui_GetIO();
+        ImGuiIO_AddMouseButtonEvent(io, 0, true);
+        gui->mouse_button_pressed = 1;
+        break;
     case PW_EVENT_MOUSE_LEFT_UP:
+        ImGui_SetCurrentContext(gui->imgui_context);
+        io = ImGui_GetIO();
+        ImGuiIO_AddMouseButtonEvent(io, 0, false);
+        gui->mouse_button_pressed = 0;
+        break;
     case PW_EVENT_MOUSE_RIGHT_DOWN:
+        ImGui_SetCurrentContext(gui->imgui_context);
+        io = ImGui_GetIO();
+        ImGuiIO_AddMouseButtonEvent(io, 1, true);
+        gui->mouse_button_pressed = 1;
+        break;
     case PW_EVENT_MOUSE_RIGHT_UP:
-        imgui_handle_event(gui, event);
+        ImGui_SetCurrentContext(gui->imgui_context);
+        io = ImGui_GetIO();
+        ImGuiIO_AddMouseButtonEvent(io, 1, false);
+        gui->mouse_button_pressed = 0;
         break;
     case PW_EVENT_CONTENT_SCALE_FACTOR_CHANGED:
         scale = event->content_scale_factor;
