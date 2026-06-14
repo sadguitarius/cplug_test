@@ -12,7 +12,8 @@
 #include <dcimgui_impl_win32.h>
 #include <dcimgui_impl_dx11.h>
 #else
-#include <metal_backend.h>
+#include <dcimgui_impl_metal.h>
+#include <metal_surface.h>
 #endif // _WIN32
 
 #ifdef _WIN32
@@ -128,7 +129,7 @@ typedef struct GUI {
     ImGuiContext *imgui_context;
 
 #ifndef _WIN32
-    void *metal_backend; // opaque MetalBackend* on macOS (see metal_backend.h)
+    void *metal_surface;
 #endif
 
     ImFont *font;
@@ -663,7 +664,8 @@ void *pw_create_gui(void *_plugin, void *pw) {
         (ID3D11Device *)pw_get_dx11_device(gui->pw),
         (ID3D11DeviceContext *)pw_get_dx11_device_context(gui->pw));
 #else
-    gui->metal_backend = metal_backend_init(gui->pw);
+    gui->metal_surface = metal_surface_init(gui->pw);
+    cImGui_ImplMetal_Init(metal_surface_device(gui->metal_surface));
 #endif // _WIN32
 
     return gui;
@@ -677,8 +679,9 @@ void pw_destroy_gui(void *_gui) {
     cImGui_ImplDX11_Shutdown();
     cImGui_ImplWin32_Shutdown();
 #else
-    metal_backend_shutdown(gui->metal_backend);
-    gui->metal_backend = NULL;
+    cImGui_ImplMetal_Shutdown();
+    metal_surface_shutdown(gui->metal_surface);
+    gui->metal_surface = NULL;
 #endif // _WIN32
     ImGui_DestroyContext(NULL);
 
@@ -702,8 +705,10 @@ void pw_tick(void *_gui) {
     cImGui_ImplDX11_NewFrame();
     cImGui_ImplWin32_NewFrame();
 #else
-    if (!metal_backend_new_frame(gui->metal_backend, gui->pw))
+    void *rpd = metal_surface_begin_frame(gui->metal_surface, gui->pw);
+    if (!rpd)
         return;
+    cImGui_ImplMetal_NewFrame(rpd);
     float backing = pw_get_backing_scale_factor(gui->pw);
     io->DisplaySize = (ImVec2){width, height};
     io->DisplayFramebufferScale = (ImVec2){backing, backing};
@@ -763,8 +768,11 @@ void pw_tick(void *_gui) {
     d3d11_ClearRenderTargetView(context, target_view, clear_color_with_alpha);
     cImGui_ImplDX11_RenderDrawData(ImGui_GetDrawData());
 #else
-    metal_backend_render(gui->metal_backend, gui->pw, ImGui_GetDrawData(),
-                         clear_color_with_alpha);
+    void *cmd;
+    void *enc = metal_surface_begin_render(gui->metal_surface,
+                                           clear_color_with_alpha, &cmd);
+    cImGui_ImplMetal_Render(ImGui_GetDrawData(), cmd, enc);
+    metal_surface_end_render(gui->metal_surface, gui->pw);
 #endif
 }
 

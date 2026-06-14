@@ -64,7 +64,8 @@ set(GUI_SOURCES
 if (APPLE)
     list(APPEND GUI_SOURCES
         lib/imgui/backends/imgui_impl_metal.mm
-        lib/custom_bindings/metal_backend.mm
+        lib/custom_bindings/metal_surface.mm
+        lib/custom_bindings/dcimgui_impl_metal.mm
     )
 elseif (WIN32)
     list(APPEND GUI_SOURCES
