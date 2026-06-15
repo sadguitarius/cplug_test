@@ -208,7 +208,7 @@ elseif (APPLE)
         lib/CPLUG/src/cplug_standalone_osx.m
         lib/CPLUG/src/cplug_extensions/window_osx.m
         ${GUI_SOURCES})
-    target_link_libraries(${PROJECT_NAME}_app PRIVATE "-framework Cocoa -framework CoreMIDI -framework CoreAudio -framework CoreServices -framework Metal -framework MetalKit -framework QuartzCore")
+    target_link_libraries(${PROJECT_NAME}_app PRIVATE "-framework AudioToolbox -framework Cocoa -framework CoreMIDI -framework CoreAudio -framework CoreServices -framework Metal -framework MetalKit -framework QuartzCore")
     configure_info_plist(${PROJECT_NAME}_app ${APP_BUNDLE_ID} "APPL" "app")
 
     file(TOUCH_NOCREATE "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}/${PROJECT_NAME}.app/Contents/PkgInfo")

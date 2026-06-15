@@ -27,27 +27,28 @@
 #define my_assert(cond) (cond) ? (void)0 : __builtin_debugtrap()
 #endif // _WIN32
 
-// #if defined(_WIN32) && defined(__x86_64__)
+#if defined(_WIN32) && (defined(__x86_64__) || defined(_M_X64))
 // https://softwareengineering.stackexchange.com/a/337251
 #include <immintrin.h>
-#define DISABLE_DENORMALS                                                      \
-    unsigned int oldMXCSR = _mm_getcsr(); /*read the old MXCSR setting  */     \
-    unsigned int newMXCSR = oldMXCSR |= 0x8040; /* set DAZ and FZ bits */      \
-    _mm_setcsr(newMXCSR); /* write the new MXCSR setting to the MXCSR */
+#define DISABLE_DENORMALS                                                                                              \
+    unsigned int oldMXCSR = _mm_getcsr();       /*read the old MXCSR setting  */                                       \
+    unsigned int newMXCSR = oldMXCSR |= 0x8040; /* set DAZ and FZ bits        */                                       \
+    _mm_setcsr(newMXCSR);                       /* write the new MXCSR setting to the MXCSR */
 #define RESTORE_DENORMALS _mm_setcsr(oldMXCSR);
-// #else
-// #include <fenv.h>
-// #if defined(__x86_64__)
-// #define DISABLE_DENORMS_ENV &_FE_DFL_DISABLE_SSE_DENORMS_ENV
-// #elif defined(__arm64__)
-// #define DISABLE_DENORMS_ENV &_FE_DFL_DISABLE_DENORMS_ENV
-// #endif // x84, ARM64
-//
-// #define DISABLE_DENORMALS \
-//   fenv_t _fenv; \
-//   fegetenv(&_fenv); \ fesetenv(DISABLE_DENORMS_ENV);
-// #define RESTORE_DENORMALS fesetenv(&_fenv);
-// #endif
+#else
+#include <fenv.h>
+#if defined(__x86_64__)
+#define DISABLE_DENORMS_ENV &_FE_DFL_DISABLE_SSE_DENORMS_ENV
+#elif defined(__arm64__)
+#define DISABLE_DENORMS_ENV &_FE_DFL_DISABLE_DENORMS_ENV
+#endif // x84, ARM64
+
+#define DISABLE_DENORMALS                                                                                              \
+    fenv_t _fenv;                                                                                                      \
+    fegetenv(&_fenv);                                                                                                  \
+    fesetenv(DISABLE_DENORMS_ENV);
+#define RESTORE_DENORMALS fesetenv(&_fenv);
+#endif
 
 #define ARRLEN(a)              (sizeof(a) / sizeof((a)[0]))
 #define CPLUG_EVENT_QUEUE_MASK (CPLUG_EVENT_QUEUE_SIZE - 1)
@@ -119,8 +120,8 @@ typedef struct GUI {
     char uniqueClassName[64];
 #endif
 
-    uint32_t normalized_width;
-    uint32_t normalized_height;
+    float normalized_width;
+    float normalized_height;
 
     bool mouseDragging;
     uint32_t dragParamId;
@@ -135,6 +136,8 @@ typedef struct GUI {
     void *sokol_imgui_ctx;
 
     ImFont *font;
+
+    ImGuiStyle imgui_style;
 
     // Our state
     ImVec4 clear_color;
@@ -581,6 +584,7 @@ void imgui_set_scale(GUI *gui, float scale) {
     ImGui_SetCurrentContext(gui->imgui_ctx);
 
     ImGuiStyle *style = ImGui_GetStyle();
+    *style = gui->imgui_style;
     ImGuiStyle_ScaleAllSizes(style, scale);
     style->FontScaleDpi = scale;
 }
@@ -675,24 +679,35 @@ void *pw_create_gui(void *_plugin, void *pw) {
     // Setup Dear ImGui style
     ImGui_StyleColorsDark(NULL);
 
-    // TODO: try to get rid of this
-    // currently needed for hosts such as Reason that ignore VST3 scaling
-    // callbacks
-#ifdef _WIN32
-    DPI_AWARENESS awareness =
-        GetAwarenessFromDpiAwarenessContext(GetThreadDpiAwarenessContext());
-    if (awareness != DPI_AWARENESS_UNAWARE) {
-        HMONITOR monitor = MonitorFromWindow(pw_get_native_window(pw),
-                                             MONITOR_DEFAULTTONEAREST);
-        DEVICE_SCALE_FACTOR device_scale_factor;
-        HRESULT hr = GetScaleFactorForMonitor(monitor, &device_scale_factor);
-        PW_ASSERT(hr == S_OK);
-        float scale = device_scale_factor / 100.0f;
-        cplug_setScaleFactor(gui->pw, scale);
-        cplug_setSize(gui->pw, gui->normalized_width * scale,
-                      gui->normalized_height * scale);
+    {
+        ImGuiStyle *style = ImGui_GetStyle();
+        style->WindowPadding = (ImVec2){20.0f, 20.0f};
+        style->FramePadding = (ImVec2){10.0f, 5.0f};
+        style->FrameRounding = 10.0f;
+        style->GrabRounding = 10.0f;
+        style->PopupRounding = 10.0f;
+        style->ScrollbarRounding = 10.0f;
+        style->TabRounding = 10.0f;
+        style->ChildRounding = 10.0f;
+        gui->imgui_style = *style;
     }
-#endif // _WIN32
+
+// fix for Reason being dumb and not passing scaling information to plugins
+// #ifdef _WIN32
+//     DPI_AWARENESS awareness =
+//         GetAwarenessFromDpiAwarenessContext(GetThreadDpiAwarenessContext());
+//     if (awareness != DPI_AWARENESS_UNAWARE) {
+//         HMONITOR monitor = MonitorFromWindow(pw_get_native_window(pw),
+//                                              MONITOR_DEFAULTTONEAREST);
+//         DEVICE_SCALE_FACTOR device_scale_factor;
+//         HRESULT hr = GetScaleFactorForMonitor(monitor, &device_scale_factor);
+//         PW_ASSERT(hr == S_OK);
+//         float scale = device_scale_factor / 100.0f;
+//         cplug_setScaleFactor(gui->pw, scale);
+//         cplug_setSize(gui->pw, (uint32_t)lroundf(gui->normalized_width * scale),
+//                       (uint32_t)lroundf(gui->normalized_height * scale));
+//     }
+// #endif // _WIN32
 
     float scale = pw_get_content_scale_factor(gui->pw);
     imgui_set_scale(gui, scale);
@@ -750,15 +765,6 @@ void pw_tick(void *_gui) {
     });
     if (gui->font)
         ImGui_PushFontFloat(gui->font, 18.0f);
-    ImGuiStyle *style = ImGui_GetStyle();
-    style->WindowPadding = (ImVec2){20.0f, 20.0f};
-    style->FrameRounding = 10.0f;
-    style->FramePadding = (ImVec2){10.0f, 5.0f};
-    style->GrabRounding = 10.0f;
-    style->PopupRounding = 10.0f;
-    style->ScrollbarRounding = 10.0f;
-    style->TabRounding = 10.0f;
-    style->ChildRounding = 10.0f;
 
     ImGui_SetNextWindowPos((ImVec2){0, 0}, 0);
     ImGui_SetNextWindowSize((ImVec2){width, height}, 0);
@@ -845,8 +851,8 @@ bool pw_event(const PWEvent *event) {
         break;
     case PW_EVENT_CONTENT_SCALE_FACTOR_CHANGED:
         scale = event->content_scale_factor;
-        uint32_t width = (uint32_t)(scale * gui->normalized_width);
-        uint32_t height = (uint32_t)(scale * gui->normalized_height);
+        uint32_t width = (uint32_t)lroundf(scale * gui->normalized_width);
+        uint32_t height = (uint32_t)lroundf(scale * gui->normalized_height);
 
         if (plugin->hostContext->type != CPLUG_PLUGIN_IS_STANDALONE)
             plugin->hostContext->requestResize(plugin->hostContext, width,
