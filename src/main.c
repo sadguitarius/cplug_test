@@ -24,14 +24,33 @@
 #define my_assert(cond) (cond) ? (void)0 : __builtin_debugtrap()
 #endif // _WIN32
 
-// #if defined(_WIN32) && defined(__x86_64__)
+// Flush-to-zero / denormals-are-zero handling, per architecture.
 // https://softwareengineering.stackexchange.com/a/337251
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
 #include <immintrin.h>
 #define DISABLE_DENORMALS                                                      \
     unsigned int oldMXCSR = _mm_getcsr(); /*read the old MXCSR setting  */     \
     unsigned int newMXCSR = oldMXCSR |= 0x8040; /* set DAZ and FZ bits */      \
     _mm_setcsr(newMXCSR); /* write the new MXCSR setting to the MXCSR */
 #define RESTORE_DENORMALS _mm_setcsr(oldMXCSR);
+#elif defined(__aarch64__) || defined(__arm64__)
+// On AArch64, denormal flushing is controlled by the FZ bit (24) of FPCR.
+static inline unsigned long cplug_read_fpcr(void) {
+    unsigned long v;
+    __asm__ volatile("mrs %0, fpcr" : "=r"(v));
+    return v;
+}
+static inline void cplug_write_fpcr(unsigned long v) {
+    __asm__ volatile("msr fpcr, %0" : : "r"(v));
+}
+#define DISABLE_DENORMALS                                                      \
+    unsigned long oldFPCR = cplug_read_fpcr();                                 \
+    cplug_write_fpcr(oldFPCR | (1UL << 24)); /* set FZ bit */
+#define RESTORE_DENORMALS cplug_write_fpcr(oldFPCR);
+#else
+#define DISABLE_DENORMALS
+#define RESTORE_DENORMALS
+#endif
 // #else
 // #include <fenv.h>
 // #if defined(__x86_64__)
