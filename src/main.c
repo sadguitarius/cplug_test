@@ -7,14 +7,17 @@
 #include <whereami.h>
 
 #include <dcimgui.h>
-#ifdef _WIN32
-#include <d3d11.h>
-#include <dcimgui_impl_win32.h>
-#include <dcimgui_impl_dx11.h>
-#else
-#include <dcimgui_impl_metal.h>
-#include <metal_surface.h>
-#endif // _WIN32
+
+#include <sokol_gfx.h>
+#include <sokol_log.h>
+#define SOKOL_IMGUI_NO_SOKOL_APP
+#include <sokol_imgui.h>
+
+// #ifndef _WIN32
+// // Implemented in sokol_impl.c (Objective-C). True when the Metal drawable is ready
+// // this frame; pw_tick runs on a timer that can fire before it is.
+// bool pw_metal_drawable_ready(void *pw);
+// #endif
 
 #ifdef _WIN32
 #include <ShellScalingApi.h>
@@ -126,11 +129,10 @@ typedef struct GUI {
     double dragStartParamNormalised;
     double dragCurrentParamNormalised;
 
-    ImGuiContext *imgui_context;
+    ImGuiContext *imgui_ctx;
 
-#ifndef _WIN32
-    void *metal_surface;
-#endif
+    void *sokol_gfx_ctx;
+    void *sokol_imgui_ctx;
 
     ImFont *font;
 
@@ -543,30 +545,50 @@ void sendParamEventFromMain(Plugin *plugin, uint32_t type, uint32_t paramId,
 // GUI
 //
 
+static sg_environment get_sg_environment(void *pw) {
+    sg_environment env = {0};
+    env.defaults.color_format = SG_PIXELFORMAT_BGRA8;
+    env.defaults.depth_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    env.defaults.sample_count = 1;
 #ifdef _WIN32
-static inline void
-d3d11_OMSetRenderTargets(ID3D11DeviceContext *self, UINT NumViews,
-                         ID3D11RenderTargetView *const *ppRenderTargetViews,
-                         ID3D11DepthStencilView *pDepthStencilView) {
-    self->lpVtbl->OMSetRenderTargets(self, NumViews, ppRenderTargetViews,
-                                     pDepthStencilView);
+    env.d3d11.device = pw_get_dx11_device(pw);
+    env.d3d11.device_context = pw_get_dx11_device_context(pw);
+#else
+    env.metal.device = pw_get_metal_device(pw);
+#endif
+    return env;
 }
 
-static inline void
-d3d11_ClearRenderTargetView(ID3D11DeviceContext *self,
-                            ID3D11RenderTargetView *pRenderTargetView,
-                            const FLOAT ColorRGBA[4]) {
-    self->lpVtbl->ClearRenderTargetView(self, pRenderTargetView, ColorRGBA);
+static sg_swapchain get_sg_swapchain(void *pw, int width, int height) {
+    sg_swapchain sc = {0};
+    sc.width = width;
+    sc.height = height;
+    sc.sample_count = 1;
+    sc.color_format = SG_PIXELFORMAT_BGRA8;
+    sc.depth_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+#ifdef _WIN32
+    sc.d3d11.render_view = pw_get_dx11_render_target_view(pw);
+    sc.d3d11.depth_stencil_view = pw_get_dx11_depth_stencil_view(pw);
+#else
+    sc.metal.current_drawable = pw_get_metal_drawable(pw);
+    sc.metal.depth_stencil_texture = pw_get_metal_depth_stencil_texture(pw);
+#endif
+    return sc;
 }
-#endif // _WIN32
 
 void imgui_set_scale(GUI *gui, float scale) {
-    CPLUG_LOG_ASSERT(gui->imgui_context != NULL)
-    ImGui_SetCurrentContext(gui->imgui_context);
+    CPLUG_LOG_ASSERT(gui->imgui_ctx != NULL)
+    ImGui_SetCurrentContext(gui->imgui_ctx);
 
     ImGuiStyle *style = ImGui_GetStyle();
     ImGuiStyle_ScaleAllSizes(style, scale);
     style->FontScaleDpi = scale;
+}
+
+static void gui_set_current_context(GUI *gui) {
+    ImGui_SetCurrentContext(gui->imgui_ctx);
+    sg_set_current_context(gui->sokol_gfx_ctx);
+    simgui_set_current_context(gui->sokol_imgui_ctx);
 }
 
 void pw_get_info(PWGetInfo *info) {
@@ -604,9 +626,26 @@ void *pw_create_gui(void *_plugin, void *pw) {
 
     CIMGUI_CHECKVERSION();
 
-    ImGuiContext *imgui_context = ImGui_CreateContext(NULL);
-    ImGui_SetCurrentContext(imgui_context);
-    gui->imgui_context = imgui_context;
+    gui->sokol_gfx_ctx = sg_make_context();
+    sg_set_current_context(gui->sokol_gfx_ctx);
+    sg_setup(&(sg_desc){
+        .environment = get_sg_environment(pw),
+        .logger.func = slog_func,
+    });
+
+    gui->sokol_imgui_ctx = simgui_make_context();
+    simgui_set_current_context(gui->sokol_imgui_ctx);
+    // needed for multi-instance initialization
+    ImGui_SetCurrentContext(NULL);
+    simgui_setup(&(simgui_desc_t){
+        .no_default_font = true,
+        .color_format = SG_PIXELFORMAT_BGRA8,
+        .depth_format = SG_PIXELFORMAT_DEPTH_STENCIL,
+        .sample_count = 1,
+        .logger.func = slog_func,
+    });
+
+    gui->imgui_ctx = ImGui_GetCurrentContext();
 
     ImGuiIO *io = ImGui_GetIO();
     io->IniFilename = NULL;
@@ -628,6 +667,7 @@ void *pw_create_gui(void *_plugin, void *pw) {
             ImFontAtlas_AddFontFromFileTTF(io->Fonts, path, 0.0f, NULL, NULL);
     } else {
         cplug_log("font not found at %s, using default\n", path);
+        ImFontAtlas_AddFontDefault(io->Fonts, NULL);
         gui->font = NULL;
     }
     free(path);
@@ -657,33 +697,20 @@ void *pw_create_gui(void *_plugin, void *pw) {
     float scale = pw_get_content_scale_factor(gui->pw);
     imgui_set_scale(gui, scale);
 
-    // Setup Platform/Renderer backends
-#ifdef _WIN32
-    cImGui_ImplWin32_Init(pw_get_native_window(gui->pw));
-    cImGui_ImplDX11_Init(
-        (ID3D11Device *)pw_get_dx11_device(gui->pw),
-        (ID3D11DeviceContext *)pw_get_dx11_device_context(gui->pw));
-#else
-    gui->metal_surface = metal_surface_init(gui->pw);
-    cImGui_ImplMetal_Init(metal_surface_device(gui->metal_surface));
-#endif // _WIN32
-
     return gui;
 }
 
 void pw_destroy_gui(void *_gui) {
     GUI *gui = (GUI *)_gui;
 
-    ImGui_SetCurrentContext(gui->imgui_context);
-#ifdef _WIN32
-    cImGui_ImplDX11_Shutdown();
-    cImGui_ImplWin32_Shutdown();
-#else
-    cImGui_ImplMetal_Shutdown();
-    metal_surface_shutdown(gui->metal_surface);
-    gui->metal_surface = NULL;
-#endif // _WIN32
-    ImGui_DestroyContext(NULL);
+    gui_set_current_context(gui);
+
+    simgui_shutdown();
+    sg_shutdown();
+    sg_destroy_context(gui->sokol_gfx_ctx);
+    simgui_destroy_context(gui->sokol_imgui_ctx);
+    gui->sokol_gfx_ctx = NULL;
+    gui->sokol_imgui_ctx = NULL;
 
     gui->plugin->gui = NULL;
     free(gui);
@@ -692,7 +719,7 @@ void pw_destroy_gui(void *_gui) {
 void pw_tick(void *_gui) {
     GUI *gui = (GUI *)_gui;
 
-    ImGui_SetCurrentContext(gui->imgui_context);
+    gui_set_current_context(gui);
 
     float scale = pw_get_content_scale_factor(gui->pw);
     float width = (float)(gui->normalized_width) * scale;
@@ -700,21 +727,27 @@ void pw_tick(void *_gui) {
 
     ImGuiIO *io = ImGui_GetIO();
 
-    // Start the Dear ImGui frame
+// #ifndef _WIN32
+//     // The timer can fire before the MTKView has a drawable; skip the frame rather
+//     // than trip pw_get_metal_drawable()'s assert (used in pw_sg_swapchain below).
+//     if (!pw_metal_drawable_ready(gui->pw))
+//         return;
+// #endif
+
 #ifdef _WIN32
-    cImGui_ImplDX11_NewFrame();
-    cImGui_ImplWin32_NewFrame();
+    float fbscale = 1.0f;
 #else
-    void *rpd = metal_surface_begin_frame(gui->metal_surface, gui->pw);
-    if (!rpd)
-        return;
-    cImGui_ImplMetal_NewFrame(rpd);
-    float backing = pw_get_backing_scale_factor(gui->pw);
-    io->DisplaySize = (ImVec2){width, height};
-    io->DisplayFramebufferScale = (ImVec2){backing, backing};
-    io->DeltaTime = 1.0f / 60.0f;
+    float fbscale = pw_get_backing_scale_factor(gui->pw);
 #endif
-    ImGui_NewFrame();
+    int fb_width = (int)(width * fbscale);
+    int fb_height = (int)(height * fbscale);
+
+    simgui_new_frame(&(simgui_frame_desc_t){
+        .width = fb_width,
+        .height = fb_height,
+        .delta_time = 1.0 / 60.0,
+        .dpi_scale = fbscale,
+    });
     if (gui->font)
         ImGui_PushFontFloat(gui->font, 18.0f);
     ImGuiStyle *style = ImGui_GetStyle();
@@ -750,30 +783,22 @@ void pw_tick(void *_gui) {
     if (gui->font)
         ImGui_PopFont();
 
-    // Rendering
-    ImGui_Render();
-    const float clear_color_with_alpha[4] = {
+    sg_pass_action action = {0};
+    action.colors[0].load_action = SG_LOADACTION_CLEAR;
+    action.colors[0].clear_value = (sg_color){
         gui->clear_color.x * gui->clear_color.w,
         gui->clear_color.y * gui->clear_color.w,
-        gui->clear_color.z * gui->clear_color.w, gui->clear_color.w};
+        gui->clear_color.z * gui->clear_color.w,
+        gui->clear_color.w,
+    };
 
-#ifdef _WIN32
-    ID3D11DeviceContext *context = pw_get_dx11_device_context(gui->pw);
-    ID3D11RenderTargetView *target_view =
-        pw_get_dx11_render_target_view(gui->pw);
-
-    d3d11_OMSetRenderTargets(
-        context, 1, &target_view,
-        (ID3D11DepthStencilView *)pw_get_dx11_depth_stencil_view(gui->pw));
-    d3d11_ClearRenderTargetView(context, target_view, clear_color_with_alpha);
-    cImGui_ImplDX11_RenderDrawData(ImGui_GetDrawData());
-#else
-    void *cmd;
-    void *enc = metal_surface_begin_render(gui->metal_surface,
-                                           clear_color_with_alpha, &cmd);
-    cImGui_ImplMetal_Render(ImGui_GetDrawData(), cmd, enc);
-    metal_surface_end_render(gui->metal_surface, gui->pw);
-#endif
+    sg_begin_pass(&(sg_pass){
+        .action = action,
+        .swapchain = get_sg_swapchain(gui->pw, fb_width, fb_height),
+    });
+    simgui_render();
+    sg_end_pass();
+    sg_commit();
 }
 
 bool pw_event(const PWEvent *event) {
@@ -788,32 +813,32 @@ bool pw_event(const PWEvent *event) {
         gui->normalized_height = event->resize.height / scale;
         break;
     case PW_EVENT_MOUSE_MOVE:
-        ImGui_SetCurrentContext(gui->imgui_context);
+        ImGui_SetCurrentContext(gui->imgui_ctx);
         io = ImGui_GetIO();
         ImGuiIO_AddMousePosEvent(io, event->mouse.x, event->mouse.y);
         gui->mouse_x = (int)event->mouse.x;
         gui->mouse_y = (int)event->mouse.y;
         break;
     case PW_EVENT_MOUSE_LEFT_DOWN:
-        ImGui_SetCurrentContext(gui->imgui_context);
+        ImGui_SetCurrentContext(gui->imgui_ctx);
         io = ImGui_GetIO();
         ImGuiIO_AddMouseButtonEvent(io, 0, true);
         gui->mouse_button_pressed = 1;
         break;
     case PW_EVENT_MOUSE_LEFT_UP:
-        ImGui_SetCurrentContext(gui->imgui_context);
+        ImGui_SetCurrentContext(gui->imgui_ctx);
         io = ImGui_GetIO();
         ImGuiIO_AddMouseButtonEvent(io, 0, false);
         gui->mouse_button_pressed = 0;
         break;
     case PW_EVENT_MOUSE_RIGHT_DOWN:
-        ImGui_SetCurrentContext(gui->imgui_context);
+        ImGui_SetCurrentContext(gui->imgui_ctx);
         io = ImGui_GetIO();
         ImGuiIO_AddMouseButtonEvent(io, 1, true);
         gui->mouse_button_pressed = 1;
         break;
     case PW_EVENT_MOUSE_RIGHT_UP:
-        ImGui_SetCurrentContext(gui->imgui_context);
+        ImGui_SetCurrentContext(gui->imgui_ctx);
         io = ImGui_GetIO();
         ImGuiIO_AddMouseButtonEvent(io, 1, false);
         gui->mouse_button_pressed = 0;

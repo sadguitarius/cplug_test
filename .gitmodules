@@ -8,3 +8,7 @@
 [submodule "lib/whereami"]
 	path = lib/whereami
 	url = https://github.com/gpakosz/whereami.git
+[submodule "lib/sokol"]
+	path = lib/sokol
+	url = https://github.com/sadguitarius/sokol
+	branch = multi-instance

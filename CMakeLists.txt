@@ -17,8 +17,8 @@ if (APPLE)
     enable_language(OBJC)
     set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
     add_compile_definitions(PW_METAL)
-    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/lib/imgui/backends/imgui_impl_metal.mm
-        PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/sokol_impl.c
+        PROPERTIES LANGUAGE OBJC COMPILE_OPTIONS "-fobjc-arc")
 endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
@@ -49,7 +49,7 @@ if (WIN32)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS PW_DX11)
 endif()
 
-include_directories(lib/CPLUG/src lib/imgui lib/imgui/backends lib/dcimgui lib/dcimgui/backends lib/whereami/src lib/custom_bindings)
+include_directories(lib/CPLUG/src lib/imgui lib/dcimgui lib/whereami/src lib/sokol lib/sokol/util)
 
 set(GUI_SOURCES
     lib/imgui/imgui.cpp
@@ -60,21 +60,8 @@ set(GUI_SOURCES
     lib/dcimgui/dcimgui.cpp
     lib/dcimgui/dcimgui_internal.cpp
     lib/whereami/src/whereami.c
+    src/sokol_impl.c
 )
-if (APPLE)
-    list(APPEND GUI_SOURCES
-        lib/imgui/backends/imgui_impl_metal.mm
-        lib/custom_bindings/metal_surface.mm
-        lib/custom_bindings/dcimgui_impl_metal.mm
-    )
-elseif (WIN32)
-    list(APPEND GUI_SOURCES
-        lib/imgui/backends/imgui_impl_dx11.cpp
-        lib/imgui/backends/imgui_impl_win32.cpp
-        lib/dcimgui/backends/dcimgui_impl_dx11.cpp
-        lib/dcimgui/backends/dcimgui_impl_win32.cpp
-    )
-endif()
 
 set(PRODUCT_NAME "CPLUG Example")
 set(PRODUCT_COPYRIGHT CPLUG)
