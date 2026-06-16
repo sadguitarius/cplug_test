@@ -1,4 +1,34 @@
 CompileFlags:
   Add:
-    ['-Wno-microsoft-enum-forward-reference']
+    [
+      '-Wno-microsoft-enum-forward-reference',
+      '--include=C:/Users/sadguitarius/src/projects/cplug_test/lib/sokol/sokol_gfx.h',
+      '--include=C:/Users/sadguitarius/src/projects/cplug_test/lib/dcimgui/dcimgui.h',
+      '-DSOKOL_IMPL',
+      '-DSOKOL_D3D11',
+      '-DSOKOL_IMGUI_CPREFIX=ImGui_',
+      '-DSOKOL_IMGUI_NO_SOKOL_APP'
+    ]
   CompilationDatabase: build
+
+---
+
+If:
+  PathMatch: sokol_gfx.h
+CompileFlags:
+  Add:
+    [
+      '-undef',
+      'SOKOL_GFX_INCLUDED',
+    ]
+
+---
+
+If:
+  PathMatch: sokol_imgui.h
+CompileFlags:
+  Add:
+    [
+      '-undef',
+      'SOKOL_IMGUI_INCLUDED',
+    ]

@@ -589,6 +589,7 @@ void imgui_set_scale(GUI *gui, float scale) {
     style->FontScaleDpi = scale;
 }
 
+// must call on every host callback entry point to preserve multi-instance behavior
 static void gui_set_current_context(GUI *gui) {
     ImGui_SetCurrentContext(gui->imgui_ctx);
     sg_set_current_context(gui->sokol_gfx_ctx);
@@ -639,7 +640,9 @@ void *pw_create_gui(void *_plugin, void *pw) {
 
     gui->sokol_imgui_ctx = simgui_make_context();
     simgui_set_current_context(gui->sokol_imgui_ctx);
-    // needed for multi-instance initialization
+    // NOTE: simgui_setup() unconditionally CreateContext()s a fresh ImGui context and
+    // makes it current (we capture it as gui->imgui_ctx below). Clear any current context
+    // first so this instance can never accidentally adopt a sibling's GImGui.
     ImGui_SetCurrentContext(NULL);
     simgui_setup(&(simgui_desc_t){
         .no_default_font = true,
@@ -724,6 +727,11 @@ void pw_destroy_gui(void *_gui) {
     sg_shutdown();
     sg_destroy_context(gui->sokol_gfx_ctx);
     simgui_destroy_context(gui->sokol_imgui_ctx);
+
+    sg_set_current_context(NULL);
+    simgui_set_current_context(NULL);
+    ImGui_SetCurrentContext(NULL);
+
     gui->sokol_gfx_ctx = NULL;
     gui->sokol_imgui_ctx = NULL;
 
