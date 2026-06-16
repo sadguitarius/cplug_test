@@ -38,7 +38,7 @@
 
 bool pw_metal_drawable_ready(void *pw)
 {
-    MTKView *view = (MTKView *)pw_get_native_window(pw);
+    MTKView *view = (__bridge MTKView *)pw_get_native_window(pw);
     return view.currentDrawable != nil;
 }
 #endif // __APPLE__
