@@ -63,6 +63,15 @@ set(GUI_SOURCES
     src/sokol_impl.c
 )
 
+# get rid of annoying warnings from unused dcimgui bindings
+if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+    set_source_files_properties(
+        lib/dcimgui/dcimgui.cpp
+        lib/dcimgui/dcimgui_internal.cpp
+        PROPERTIES COMPILE_OPTIONS "-Wno-unused-function"
+    )
+endif()
+
 set(PRODUCT_NAME "CPLUG Example")
 set(PRODUCT_COPYRIGHT CPLUG)
 set(PLUGIN_BUNDLE_ID "com.cplug.example.plugin")
