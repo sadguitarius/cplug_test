@@ -13,12 +13,6 @@
 #define SOKOL_IMGUI_NO_SOKOL_APP
 #include <sokol_imgui.h>
 
-// #ifndef _WIN32
-// // Implemented in sokol_impl.c (Objective-C). True when the Metal drawable is ready
-// // this frame; pw_tick runs on a timer that can fire before it is.
-// bool pw_metal_drawable_ready(void *pw);
-// #endif
-
 #ifdef _WIN32
 #include <ShellScalingApi.h>
 
@@ -30,10 +24,10 @@
 #if defined(_WIN32) && (defined(__x86_64__) || defined(_M_X64))
 // https://softwareengineering.stackexchange.com/a/337251
 #include <immintrin.h>
-#define DISABLE_DENORMALS                                                                                              \
-    unsigned int oldMXCSR = _mm_getcsr();       /*read the old MXCSR setting  */                                       \
-    unsigned int newMXCSR = oldMXCSR |= 0x8040; /* set DAZ and FZ bits        */                                       \
-    _mm_setcsr(newMXCSR);                       /* write the new MXCSR setting to the MXCSR */
+#define DISABLE_DENORMALS                                                      \
+    unsigned int oldMXCSR = _mm_getcsr(); /*read the old MXCSR setting  */     \
+    unsigned int newMXCSR = oldMXCSR |= 0x8040; /* set DAZ and FZ bits */      \
+    _mm_setcsr(newMXCSR); /* write the new MXCSR setting to the MXCSR */
 #define RESTORE_DENORMALS _mm_setcsr(oldMXCSR);
 #else
 #include <fenv.h>
@@ -43,9 +37,9 @@
 #define DISABLE_DENORMS_ENV &_FE_DFL_DISABLE_DENORMS_ENV
 #endif // x84, ARM64
 
-#define DISABLE_DENORMALS                                                                                              \
-    fenv_t _fenv;                                                                                                      \
-    fegetenv(&_fenv);                                                                                                  \
+#define DISABLE_DENORMALS                                                      \
+    fenv_t _fenv;                                                              \
+    fegetenv(&_fenv);                                                          \
     fesetenv(DISABLE_DENORMS_ENV);
 #define RESTORE_DENORMALS fesetenv(&_fenv);
 #endif
@@ -589,7 +583,8 @@ void imgui_set_scale(GUI *gui, float scale) {
     style->FontScaleDpi = scale;
 }
 
-// must call on every host callback entry point to preserve multi-instance behavior
+// must call on every host callback entry point to preserve multi-instance
+// behavior
 static void gui_set_current_context(GUI *gui) {
     ImGui_SetCurrentContext(gui->imgui_ctx);
     sg_set_current_context(gui->sokol_gfx_ctx);
@@ -640,9 +635,10 @@ void *pw_create_gui(void *_plugin, void *pw) {
 
     gui->sokol_imgui_ctx = simgui_make_context();
     simgui_set_current_context(gui->sokol_imgui_ctx);
-    // NOTE: simgui_setup() unconditionally CreateContext()s a fresh ImGui context and
-    // makes it current (we capture it as gui->imgui_ctx below). Clear any current context
-    // first so this instance can never accidentally adopt a sibling's GImGui.
+    // NOTE: simgui_setup() unconditionally CreateContext()s a fresh ImGui
+    // context and makes it current (we capture it as gui->imgui_ctx below).
+    // Clear any current context first so this instance can never accidentally
+    // adopt a sibling's GImGui.
     ImGui_SetCurrentContext(NULL);
     simgui_setup(&(simgui_desc_t){
         .no_default_font = true,
@@ -695,22 +691,22 @@ void *pw_create_gui(void *_plugin, void *pw) {
         gui->imgui_style = *style;
     }
 
-// fix for Reason being dumb and not passing scaling information to plugins
-// #ifdef _WIN32
-//     DPI_AWARENESS awareness =
-//         GetAwarenessFromDpiAwarenessContext(GetThreadDpiAwarenessContext());
-//     if (awareness != DPI_AWARENESS_UNAWARE) {
-//         HMONITOR monitor = MonitorFromWindow(pw_get_native_window(pw),
-//                                              MONITOR_DEFAULTTONEAREST);
-//         DEVICE_SCALE_FACTOR device_scale_factor;
-//         HRESULT hr = GetScaleFactorForMonitor(monitor, &device_scale_factor);
-//         PW_ASSERT(hr == S_OK);
-//         float scale = device_scale_factor / 100.0f;
-//         cplug_setScaleFactor(gui->pw, scale);
-//         cplug_setSize(gui->pw, (uint32_t)lroundf(gui->normalized_width * scale),
-//                       (uint32_t)lroundf(gui->normalized_height * scale));
-//     }
-// #endif // _WIN32
+    // fix for Reason being dumb and not passing scaling information to plugins
+    // #ifdef _WIN32
+    //     DPI_AWARENESS awareness =
+    //         GetAwarenessFromDpiAwarenessContext(GetThreadDpiAwarenessContext());
+    //     if (awareness != DPI_AWARENESS_UNAWARE) {
+    //         HMONITOR monitor = MonitorFromWindow(pw_get_native_window(pw),
+    //                                              MONITOR_DEFAULTTONEAREST);
+    //         DEVICE_SCALE_FACTOR device_scale_factor;
+    //         HRESULT hr = GetScaleFactorForMonitor(monitor,
+    //         &device_scale_factor); PW_ASSERT(hr == S_OK); float scale =
+    //         device_scale_factor / 100.0f; cplug_setScaleFactor(gui->pw,
+    //         scale); cplug_setSize(gui->pw,
+    //         (uint32_t)lroundf(gui->normalized_width * scale),
+    //                       (uint32_t)lroundf(gui->normalized_height * scale));
+    //     }
+    // #endif // _WIN32
 
     float scale = pw_get_content_scale_factor(gui->pw);
     imgui_set_scale(gui, scale);
@@ -749,13 +745,6 @@ void pw_tick(void *_gui) {
     float height = (float)(gui->normalized_height) * scale;
 
     ImGuiIO *io = ImGui_GetIO();
-
-// #ifndef _WIN32
-//     // The timer can fire before the MTKView has a drawable; skip the frame rather
-//     // than trip pw_get_metal_drawable()'s assert (used in pw_sg_swapchain below).
-//     if (!pw_metal_drawable_ready(gui->pw))
-//         return;
-// #endif
 
 #ifdef _WIN32
     float fbscale = 1.0f;

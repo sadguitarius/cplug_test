@@ -3,7 +3,7 @@ CompileFlags:
     [
       '-Wno-microsoft-enum-forward-reference',
     ]
-  CompilationDatabase: build
+  CompilationDatabase: build/clang-release
 
 ---
 
