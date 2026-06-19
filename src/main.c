@@ -23,19 +23,19 @@
 
 #if defined(_WIN32) && (defined(__x86_64__) || defined(_M_X64))
 // https://softwareengineering.stackexchange.com/a/337251
-#include <immintrin.h>
+#include <pmmintrin.h>
 #define DISABLE_DENORMALS                                                      \
     unsigned int oldMXCSR = _mm_getcsr(); /*read the old MXCSR setting  */     \
-    unsigned int newMXCSR = oldMXCSR |= 0x8040; /* set DAZ and FZ bits */      \
-    _mm_setcsr(newMXCSR); /* write the new MXCSR setting to the MXCSR */
+    _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);                                \
+    _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
 #define RESTORE_DENORMALS _mm_setcsr(oldMXCSR);
 #else
 #include <fenv.h>
 #if defined(__x86_64__)
-#define DISABLE_DENORMS_ENV &_FE_DFL_DISABLE_SSE_DENORMS_ENV
+#define DISABLE_DENORMS_ENV FE_DFL_DISABLE_SSE_DENORMS_ENV
 #elif defined(__arm64__)
-#define DISABLE_DENORMS_ENV &_FE_DFL_DISABLE_DENORMS_ENV
-#endif // x84, ARM64
+#define DISABLE_DENORMS_ENV FE_DFL_DISABLE_DENORMS_ENV
+#endif // x86, ARM64
 
 #define DISABLE_DENORMALS                                                      \
     fenv_t _fenv;                                                              \
@@ -133,6 +133,7 @@ typedef struct GUI {
 
     ImGuiStyle imgui_style;
 
+    // TODO: move to state struct!!
     // Our state
     ImVec4 clear_color;
     int counter;
@@ -653,6 +654,7 @@ void *pw_create_gui(void *_plugin, void *pw) {
     ImGuiIO *io = ImGui_GetIO();
     io->IniFilename = NULL;
 
+    // add custom font
     const char *font_name = "Iosevka-Regular.ttf";
     char *path = NULL;
     int length, dirname_length;
