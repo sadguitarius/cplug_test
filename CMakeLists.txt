@@ -51,25 +51,6 @@ endif()
 
 include_directories(lib/CPLUG/src lib/imgui lib/dcimgui lib/whereami/src lib/sokol lib/sokol/util)
 
-# Regenerate the dcimgui C bindings from lib/imgui whenever the imgui headers
-# change (e.g. after a submodule update). See tools/gen_dcimgui.py.
-find_program(UV_EXECUTABLE uv REQUIRED)
-add_custom_command(
-    OUTPUT
-        ${CMAKE_CURRENT_SOURCE_DIR}/lib/dcimgui/dcimgui.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/lib/dcimgui/dcimgui.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/lib/dcimgui/dcimgui_internal.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/lib/dcimgui/dcimgui_internal.cpp
-    COMMAND ${UV_EXECUTABLE} run ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_dcimgui.py
-    DEPENDS
-        ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_dcimgui.py
-        ${CMAKE_CURRENT_SOURCE_DIR}/lib/imgui/imgui.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/lib/imgui/imgui_internal.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/lib/imgui/imconfig.h
-    COMMENT "Regenerating dcimgui bindings from lib/imgui"
-    VERBATIM
-)
-
 set(GUI_SOURCES
     lib/imgui/imgui.cpp
     lib/imgui/imgui_demo.cpp
