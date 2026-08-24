@@ -12,3 +12,6 @@
 	path = lib/sokol
 	url = https://github.com/sadguitarius/sokol
 	branch = multi-instance
+[submodule "lib/dear_bindings"]
+	path = lib/dear_bindings
+	url = https://github.com/dearimgui/dear_bindings.git
