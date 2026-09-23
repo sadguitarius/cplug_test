@@ -627,14 +627,26 @@ void *pw_create_gui(void *_plugin, void *pw) {
 
     CIMGUI_CHECKVERSION();
 
-    gui->sokol_gfx_ctx = sg_make_context();
+    // both context blocks up front, so a failed allocation unwinds with
+    // nothing set up yet
+    void *gfx_ctx_mem = malloc(sg_context_size());
+    void *imgui_ctx_mem = malloc(simgui_context_size());
+    if (gfx_ctx_mem == NULL || imgui_ctx_mem == NULL) {
+        free(gfx_ctx_mem);
+        free(imgui_ctx_mem);
+        free(gui);
+        plugin->gui = NULL;
+        return NULL;
+    }
+
+    gui->sokol_gfx_ctx = sg_init_context(gfx_ctx_mem);
     sg_set_context(gui->sokol_gfx_ctx);
     sg_setup(&(sg_desc){
         .environment = get_sg_environment(pw),
         .logger.func = slog_func,
     });
 
-    gui->sokol_imgui_ctx = simgui_make_context();
+    gui->sokol_imgui_ctx = simgui_init_context(imgui_ctx_mem);
     simgui_set_context(gui->sokol_imgui_ctx);
     // NOTE: simgui_setup() unconditionally CreateContext()s a fresh ImGui
     // context and makes it current (we capture it as gui->imgui_ctx below).
@@ -723,8 +735,10 @@ void pw_destroy_gui(void *_gui) {
 
     simgui_shutdown();
     sg_shutdown();
-    sg_destroy_context(gui->sokol_gfx_ctx);
-    simgui_destroy_context(gui->sokol_imgui_ctx);
+    sg_uninit_context(gui->sokol_gfx_ctx);
+    simgui_uninit_context(gui->sokol_imgui_ctx);
+    free(gui->sokol_gfx_ctx);
+    free(gui->sokol_imgui_ctx);
 
     sg_set_context(NULL);
     simgui_set_context(NULL);
