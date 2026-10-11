@@ -49,7 +49,7 @@ if (WIN32)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS PW_DX11)
 endif()
 
-include_directories(lib/CPLUG/src lib/imgui lib/dcimgui lib/whereami/src lib/sokol lib/sokol/util)
+include_directories(lib/CPLUG/src lib/imgui lib/dcimgui lib/whereami/src lib/sokol lib/sokol/util lib/clay lib/stb)
 
 set(GUI_SOURCES
     lib/imgui/imgui.cpp
@@ -61,13 +61,17 @@ set(GUI_SOURCES
     lib/dcimgui/dcimgui_internal.cpp
     lib/whereami/src/whereami.c
     src/gui_libs.c
+    src/clay_sokol.c
+    src/spectrum.c
 )
 
-# get rid of annoying warnings from unused dcimgui bindings
+# get rid of annoying warnings from unused dcimgui bindings, and from
+# stb_truetype, which clay_sokol.c compiles static (STBTT_STATIC)
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
     set_source_files_properties(
         lib/dcimgui/dcimgui.cpp
         lib/dcimgui/dcimgui_internal.cpp
+        src/clay_sokol.c
         PROPERTIES COMPILE_OPTIONS "-Wno-unused-function"
     )
 endif()
@@ -284,12 +288,14 @@ elseif (APPLE AND CMAKE_BUILD_TYPE MATCHES Debug)
 endif()
 
 # Fails if src/gui_libs.c gains writable statics that it does not redirect.
-# See tools/check_statics.cmake.
+# See tools/check_statics.cmake. __local_stdio_printf_options._OptionsStorage
+# is the MSVC C runtime's printf state, pulled in by cplug_log; it is the same
+# for every instance.
 add_custom_target(check_statics
     COMMAND ${CMAKE_COMMAND}
         "-DNM=${CMAKE_NM}"
         "-DOBJECTS=$<JOIN:$<TARGET_OBJECTS:${PROJECT_NAME}_plugin>,|>"
-        "-DALLOWED=g_sg,g_simgui,g_active"
+        "-DALLOWED=g_sg,g_simgui,g_active,__local_stdio_printf_options._OptionsStorage"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tools/check_statics.cmake
     VERBATIM
 )

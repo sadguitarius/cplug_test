@@ -4,17 +4,19 @@
 // sokol_gfx and sokol_imgui keep all their state in one static struct each,
 // _sg and _simgui. gui_libs.c compiles the unmodified upstream sources with
 // both redirected through pointers, and gui_libs_enter() points them at one
-// instance's state. Dear ImGui has its own context API, so its context
-// switches here too.
+// instance's state. Dear ImGui and Clay have their own context APIs, so their
+// contexts switch here too. Clay's errors go to cplug_log.
 //
-// Call gui_libs_enter() first in every host callback that touches sokol or
-// ImGui. All calls come from the host's UI thread, so editors never overlap.
+// Call gui_libs_enter() first in every host callback that touches sokol,
+// ImGui or Clay. All calls come from the host's UI thread, so editors never
+// overlap.
 #ifndef GUI_LIBS_H
 #define GUI_LIBS_H
 
 typedef struct GuiLibs GuiLibs;
 
-// Returns NULL on allocation failure.
+// Returns NULL on allocation failure. The Clay context's layout size starts
+// at 1x1; set it each frame with Clay_SetLayoutDimensions().
 GuiLibs *gui_libs_create(void);
 
 // Call after simgui_shutdown() and sg_shutdown() for this instance.

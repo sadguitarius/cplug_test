@@ -32,3 +32,24 @@ CompileFlags:
       '--include=C:/Users/sadguitarius/src/projects/cplug_test/lib/sokol/sokol_gfx.h',
       '--include=C:/Users/sadguitarius/src/projects/cplug_test/lib/dcimgui/dcimgui.h'
     ]
+
+---
+
+If:
+  PathMatch: lib/clay/clay.h
+CompileFlags:
+  Add:
+    [
+      '-DCLAY_IMPLEMENTATION'
+    ]
+
+---
+
+If:
+  PathMatch: lib/stb/stb_truetype.h
+CompileFlags:
+  Add:
+    [
+      '-DSTB_TRUETYPE_IMPLEMENTATION',
+      '-DSTBTT_STATIC'
+    ]

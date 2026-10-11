@@ -14,3 +14,6 @@
 [submodule "lib/sokol"]
 	path = lib/sokol
 	url = https://github.com/floooh/sokol
+[submodule "lib/clay"]
+	path = lib/clay
+	url = https://github.com/nicbarker/clay.git
