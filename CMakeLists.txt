@@ -282,3 +282,15 @@ elseif (APPLE AND CMAKE_BUILD_TYPE MATCHES Debug)
         )
     add_dependencies(${PROJECT_NAME}_hotreload ${HOTRELOAD_LIB_NAME})
 endif()
+
+# Fails if src/gui_libs.c gains writable statics that it does not redirect.
+# See tools/check_statics.cmake.
+add_custom_target(check_statics
+    COMMAND ${CMAKE_COMMAND}
+        "-DNM=${CMAKE_NM}"
+        "-DOBJECTS=$<JOIN:$<TARGET_OBJECTS:${PROJECT_NAME}_plugin>,|>"
+        "-DALLOWED=g_sg,g_simgui,g_active"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tools/check_statics.cmake
+    VERBATIM
+)
+add_dependencies(check_statics ${PROJECT_NAME}_plugin)
