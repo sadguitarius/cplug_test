@@ -136,7 +136,7 @@ if (APPLE)
     )
 
     add_custom_command(TARGET ${PROJECT_NAME}_plugin POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/src/Iosevka-Regular.ttf" "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}/${PROJECT_NAME}.clap/Contents/MacOS/Iosevka-Regular.ttf"
+        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/src/Lilex-Regular.ttf" "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}/${PROJECT_NAME}.clap/Contents/MacOS/Lilex-Regular.ttf"
 
         COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}/${PROJECT_NAME}.vst3"
         COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}/${PROJECT_NAME}.component"
@@ -178,7 +178,7 @@ elseif(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_BINARY_DIR}\\${CMAKE_BUILD_TYPE}\\${PROJECT_NAME}_plugin.dll" "${VST3_BUILD_PATH}\\Contents\\x86_64-win\\${PROJECT_NAME}.vst3"
         COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}\\src\\PlugIn.ico"                     "${VST3_BUILD_PATH}\\PlugIn.ico"
         COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}\\src\\desktop.ini.in"                 "${VST3_BUILD_PATH}\\desktop.ini"
-        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/src/Iosevka-Regular.ttf" "${VST3_BUILD_PATH}/Contents/x86_64-win/Iosevka-Regular.ttf"
+        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/src/Lilex-Regular.ttf" "${VST3_BUILD_PATH}/Contents/x86_64-win/Lilex-Regular.ttf"
 
         COMMAND attrib +s +h ${VST3_BUILD_PATH}\\desktop.ini
         COMMAND attrib +s +h ${VST3_BUILD_PATH}\\PlugIn.ico
@@ -209,7 +209,7 @@ if (WIN32)
     )
     target_link_libraries(${PROJECT_NAME}_app PRIVATE dwmapi shcore pathcch shlwapi ${OPENGL_LIBRARIES} d3d11 dxguid)
     add_custom_command(TARGET ${PROJECT_NAME}_plugin POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/src/Iosevka-Regular.ttf" "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}/Iosevka-Regular.ttf"
+        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/src/Lilex-Regular.ttf" "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}/Lilex-Regular.ttf"
         )
 elseif (APPLE)
     add_executable(${PROJECT_NAME}_app MACOSX_BUNDLE
@@ -224,7 +224,7 @@ elseif (APPLE)
     file(WRITE "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}/${PROJECT_NAME}.app/Contents/PkgInfo" "APPL????")
 
     add_custom_command(TARGET ${PROJECT_NAME}_app POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/src/Iosevka-Regular.ttf" "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}/${PROJECT_NAME}.app/Contents/MacOS/Iosevka-Regular.ttf"
+        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/src/Lilex-Regular.ttf" "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}/${PROJECT_NAME}.app/Contents/MacOS/Lilex-Regular.ttf"
     )
 endif()
 

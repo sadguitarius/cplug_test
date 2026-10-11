@@ -650,7 +650,7 @@ void *pw_create_gui(void *_plugin, void *pw) {
     io->IniFilename = NULL;
 
     // add custom font
-    const char *font_name = "Iosevka-Regular.ttf";
+    const char *font_name = "Lilex-Regular.ttf";
     char *path = NULL;
     int length, dirname_length;
     length = wai_getModulePath(NULL, 0, &dirname_length);
