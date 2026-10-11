@@ -811,11 +811,12 @@ void pw_tick(void *_gui) {
         gui->clear_color.w,
     };
 
+    simgui_flush();
     sg_begin_pass(&(sg_pass){
         .action = action,
         .swapchain = get_sg_swapchain(gui->pw, fb_width, fb_height),
     });
-    simgui_render();
+    simgui_draw();
     sg_end_pass();
     sg_commit();
 }

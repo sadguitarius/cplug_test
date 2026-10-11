@@ -21,12 +21,12 @@ namespace cimgui
 // Dear Bindings version retrieval functionality
 CIMGUI_API const char* cimgui::DearBindings_GetVersion()
 {
-    return "0.23";
+    return "0.24";
 }
 
 CIMGUI_API int cimgui::DearBindings_GetVersionNumber()
 {
-    return 23;
+    return 24;
 }
 
 // Manual helpers
@@ -2891,6 +2891,21 @@ CIMGUI_API bool cimgui::ImGuiPayload_IsDelivery(const cimgui::ImGuiPayload* self
     return reinterpret_cast<const ::ImGuiPayload*>(self)->IsDelivery();
 }
 
+CIMGUI_API bool cimgui::ImGuiTextFilter_ImGuiTextRange_empty(const cimgui::ImGuiTextFilter_ImGuiTextRange* self)
+{
+    return reinterpret_cast<const ::ImGuiTextFilter::ImGuiTextRange*>(self)->empty();
+}
+
+CIMGUI_API void cimgui::ImGuiTextFilter_ImGuiTextRange_split(const cimgui::ImGuiTextFilter_ImGuiTextRange* self, char separator, cimgui::ImVector_ImGuiTextRange* out)
+{
+    reinterpret_cast<const ::ImGuiTextFilter::ImGuiTextRange*>(self)->split(separator, reinterpret_cast<::ImVector<::ImGuiTextFilter::ImGuiTextRange>*>(out));
+}
+
+CIMGUI_API bool cimgui::ImGuiTextFilter_Draw(cimgui::ImGuiTextFilter* self, const char* label, float width)
+{
+    return reinterpret_cast<::ImGuiTextFilter*>(self)->Draw(label, width);
+}
+
 CIMGUI_API bool cimgui::ImGuiTextFilter_PassFilter(const cimgui::ImGuiTextFilter* self, const char* text, const char* text_end)
 {
     return reinterpret_cast<const ::ImGuiTextFilter*>(self)->PassFilter(text, text_end);
@@ -2910,30 +2925,6 @@ CIMGUI_API bool cimgui::ImGuiTextFilter_IsActive(const cimgui::ImGuiTextFilter* 
 {
     return reinterpret_cast<const ::ImGuiTextFilter*>(self)->IsActive();
 }
-
-CIMGUI_API bool cimgui::ImGuiTextFilter_Draw(cimgui::ImGuiTextFilter* self, const char* label)
-{
-    return reinterpret_cast<::ImGuiTextFilter*>(self)->Draw(label);
-}
-
-CIMGUI_API bool cimgui::ImGuiTextFilter_DrawWithHint(cimgui::ImGuiTextFilter* self)
-{
-    return reinterpret_cast<::ImGuiTextFilter*>(self)->DrawWithHint("Filter", "incl -excl");
-}
-
-CIMGUI_API bool cimgui::ImGuiTextFilter_DrawWithHintEx(cimgui::ImGuiTextFilter* self, const char* label, const char* hint)
-{
-    return reinterpret_cast<::ImGuiTextFilter*>(self)->DrawWithHint(label, hint);
-}
-
-#ifndef IMGUI_DISABLE_OBSOLETE_FUNCTIONS
-
-CIMGUI_API bool cimgui::ImGuiTextFilter_DrawFloat(cimgui::ImGuiTextFilter* self, const char* label, float width)
-{
-    return reinterpret_cast<::ImGuiTextFilter*>(self)->Draw(label, width);
-}
-
-#endif // #ifndef IMGUI_DISABLE_OBSOLETE_FUNCTIONS
 
 CIMGUI_API const char* cimgui::ImGuiTextBuffer_begin(const cimgui::ImGuiTextBuffer* self)
 {
@@ -3595,11 +3586,6 @@ CIMGUI_API void        cimgui::ImDrawList__SetDrawListSharedData(cimgui::ImDrawL
 CIMGUI_API void        cimgui::ImDrawList__ResetForNewFrame(cimgui::ImDrawList* self)
 {
     reinterpret_cast<::ImDrawList*>(self)->_ResetForNewFrame();
-}
-
-CIMGUI_API void        cimgui::ImDrawList__SetPixelDensity(cimgui::ImDrawList* self, float pixel_density)
-{
-    reinterpret_cast<::ImDrawList*>(self)->_SetPixelDensity(pixel_density);
 }
 
 CIMGUI_API void        cimgui::ImDrawList__ClearFreeMemory(cimgui::ImDrawList* self)
