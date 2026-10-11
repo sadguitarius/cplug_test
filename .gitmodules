@@ -13,5 +13,4 @@
 	url = https://github.com/dearimgui/dear_bindings.git
 [submodule "lib/sokol"]
 	path = lib/sokol
-	url = https://github.com/sadguitarius/sokol
-	branch = multi-instance2
+	url = https://github.com/floooh/sokol

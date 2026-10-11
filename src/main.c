@@ -13,6 +13,8 @@
 #define SOKOL_IMGUI_NO_SOKOL_APP
 #include <sokol_imgui.h>
 
+#include "gui_libs.h"
+
 #ifdef _WIN32
 #include <ShellScalingApi.h>
 
@@ -124,10 +126,7 @@ typedef struct GUI {
     double dragStartParamNormalised;
     double dragCurrentParamNormalised;
 
-    ImGuiContext *imgui_ctx;
-
-    sg_context sokol_gfx_ctx;
-    simgui_context sokol_imgui_ctx;
+    GuiLibs *libs; // sokol_gfx, sokol_imgui and ImGui state for this editor
 
     ImFont *font;
 
@@ -575,8 +574,7 @@ static sg_swapchain get_sg_swapchain(void *pw, int width, int height) {
 }
 
 void imgui_set_scale(GUI *gui, float scale) {
-    CPLUG_LOG_ASSERT(gui->imgui_ctx != NULL)
-    ImGui_SetCurrentContext(gui->imgui_ctx);
+    gui_libs_enter(gui->libs);
 
     ImGuiStyle *style = ImGui_GetStyle();
     *style = gui->imgui_style;
@@ -586,11 +584,7 @@ void imgui_set_scale(GUI *gui, float scale) {
 
 // must call on every host callback entry point to preserve multi-instance
 // behavior
-static void gui_set_current_context(GUI *gui) {
-    ImGui_SetCurrentContext(gui->imgui_ctx);
-    sg_set_context(gui->sokol_gfx_ctx);
-    simgui_set_context(gui->sokol_imgui_ctx);
-}
+static void gui_set_current_context(GUI *gui) { gui_libs_enter(gui->libs); }
 
 void pw_get_info(PWGetInfo *info) {
     if (info->type == PW_INFO_INIT_SIZE) {
@@ -609,9 +603,19 @@ void pw_get_info(PWGetInfo *info) {
 
 void *pw_create_gui(void *_plugin, void *pw) {
     Plugin *plugin = _plugin;
+
+    // allocate up front, so a failure unwinds with nothing set up
     GUI *gui = calloc(1, sizeof(*gui));
+    GuiLibs *libs = gui_libs_create();
+    if (gui == NULL || libs == NULL) {
+        free(gui);
+        if (libs)
+            gui_libs_destroy(libs);
+        return NULL;
+    }
 
     plugin->gui = gui;
+    gui->libs = libs;
     gui->plugin = plugin;
     gui->pw = pw;
 
@@ -627,32 +631,13 @@ void *pw_create_gui(void *_plugin, void *pw) {
 
     CIMGUI_CHECKVERSION();
 
-    // both context blocks up front, so a failed allocation unwinds with
-    // nothing set up yet
-    void *gfx_ctx_mem = malloc(sg_context_size());
-    void *imgui_ctx_mem = malloc(simgui_context_size());
-    if (gfx_ctx_mem == NULL || imgui_ctx_mem == NULL) {
-        free(gfx_ctx_mem);
-        free(imgui_ctx_mem);
-        free(gui);
-        plugin->gui = NULL;
-        return NULL;
-    }
-
-    gui->sokol_gfx_ctx = sg_init_context(gfx_ctx_mem);
-    sg_set_context(gui->sokol_gfx_ctx);
+    // Entering a new instance leaves no ImGui context current, so
+    // simgui_setup() creates this instance's own (see gui_libs.h).
+    gui_libs_enter(libs);
     sg_setup(&(sg_desc){
         .environment = get_sg_environment(pw),
         .logger.func = slog_func,
     });
-
-    gui->sokol_imgui_ctx = simgui_init_context(imgui_ctx_mem);
-    simgui_set_context(gui->sokol_imgui_ctx);
-    // NOTE: simgui_setup() unconditionally CreateContext()s a fresh ImGui
-    // context and makes it current (we capture it as gui->imgui_ctx below).
-    // Clear any current context first so this instance can never accidentally
-    // adopt a sibling's GImGui.
-    ImGui_SetCurrentContext(NULL);
     simgui_setup(&(simgui_desc_t){
         .no_default_font = true,
         .color_format = SG_PIXELFORMAT_BGRA8,
@@ -660,8 +645,6 @@ void *pw_create_gui(void *_plugin, void *pw) {
         .sample_count = 1,
         .logger.func = slog_func,
     });
-
-    gui->imgui_ctx = ImGui_GetCurrentContext();
 
     ImGuiIO *io = ImGui_GetIO();
     io->IniFilename = NULL;
@@ -735,17 +718,7 @@ void pw_destroy_gui(void *_gui) {
 
     simgui_shutdown();
     sg_shutdown();
-    sg_uninit_context(gui->sokol_gfx_ctx);
-    simgui_uninit_context(gui->sokol_imgui_ctx);
-    free(gui->sokol_gfx_ctx);
-    free(gui->sokol_imgui_ctx);
-
-    sg_set_context(NULL);
-    simgui_set_context(NULL);
-    ImGui_SetCurrentContext(NULL);
-
-    gui->sokol_gfx_ctx = NULL;
-    gui->sokol_imgui_ctx = NULL;
+    gui_libs_destroy(gui->libs);
 
     gui->plugin->gui = NULL;
     free(gui);
@@ -833,32 +806,32 @@ bool pw_event(const PWEvent *event) {
         gui->normalized_height = event->resize.height / scale;
         break;
     case PW_EVENT_MOUSE_MOVE:
-        ImGui_SetCurrentContext(gui->imgui_ctx);
+        gui_set_current_context(gui);
         io = ImGui_GetIO();
         ImGuiIO_AddMousePosEvent(io, event->mouse.x, event->mouse.y);
         gui->mouse_x = (int)event->mouse.x;
         gui->mouse_y = (int)event->mouse.y;
         break;
     case PW_EVENT_MOUSE_LEFT_DOWN:
-        ImGui_SetCurrentContext(gui->imgui_ctx);
+        gui_set_current_context(gui);
         io = ImGui_GetIO();
         ImGuiIO_AddMouseButtonEvent(io, 0, true);
         gui->mouse_button_pressed = 1;
         break;
     case PW_EVENT_MOUSE_LEFT_UP:
-        ImGui_SetCurrentContext(gui->imgui_ctx);
+        gui_set_current_context(gui);
         io = ImGui_GetIO();
         ImGuiIO_AddMouseButtonEvent(io, 0, false);
         gui->mouse_button_pressed = 0;
         break;
     case PW_EVENT_MOUSE_RIGHT_DOWN:
-        ImGui_SetCurrentContext(gui->imgui_ctx);
+        gui_set_current_context(gui);
         io = ImGui_GetIO();
         ImGuiIO_AddMouseButtonEvent(io, 1, true);
         gui->mouse_button_pressed = 1;
         break;
     case PW_EVENT_MOUSE_RIGHT_UP:
-        ImGui_SetCurrentContext(gui->imgui_ctx);
+        gui_set_current_context(gui);
         io = ImGui_GetIO();
         ImGuiIO_AddMouseButtonEvent(io, 1, false);
         gui->mouse_button_pressed = 0;

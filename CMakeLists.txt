@@ -13,15 +13,11 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE})
 string(REPLACE "/" "\\\\" SOURCE_DIR_WIN ${PROJECT_SOURCE_DIR})
 string(REPLACE "/" "\\\\" BINARY_DIR_WIN ${CMAKE_BINARY_DIR})
 
-# each plugin instance owns a separate sokol-gfx/sokol-imgui context
-# (lib/sokol/sokol_gfx.h, lib/sokol/util/sokol_imgui.h)
-add_compile_definitions(SOKOL_GFX_MULTI_CONTEXT SOKOL_IMGUI_MULTI_CONTEXT)
-
 if (APPLE)
     enable_language(OBJC)
     set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
     add_compile_definitions(PW_METAL)
-    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/sokol_impl.c
+    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/gui_libs.c
         PROPERTIES LANGUAGE OBJC COMPILE_OPTIONS "-fobjc-arc")
 endif()
 
@@ -64,7 +60,7 @@ set(GUI_SOURCES
     lib/dcimgui/dcimgui.cpp
     lib/dcimgui/dcimgui_internal.cpp
     lib/whereami/src/whereami.c
-    src/sokol_impl.c
+    src/gui_libs.c
 )
 
 # get rid of annoying warnings from unused dcimgui bindings
