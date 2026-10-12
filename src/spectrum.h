@@ -1,6 +1,7 @@
 // Scrolling 3D spectrogram (a waterfall) seen from an angle. The front line
-// shows the latest analysis. Every ticks_per_row analyses, the peak levels
-// over that span become a row, which glides back into the distance.
+// shows the latest analysis. At a set number of rows per second, the peak
+// levels since the previous row become a row, which glides back into the
+// distance.
 #ifndef SPECTRUM_H
 #define SPECTRUM_H
 
@@ -17,8 +18,8 @@ typedef struct Spectrum {
     int newest;                                // index of the latest row
     float current[SPECTRUM_BANDS];             // the latest analysis
     float held[SPECTRUM_BANDS];                // peaks since the latest row
-    int held_count;                            // analyses in held
-    int ticks_per_row;                         // from the latest spectrum_push
+    bool held_any;                             // held has an analysis in it
+    float row_phase;                           // progress to the next row, 0-1
     float re[SPECTRUM_FFT_SIZE];               // FFT scratch, kept off the stack
     float im[SPECTRUM_FFT_SIZE];
 } Spectrum;
@@ -31,11 +32,13 @@ typedef struct SpectrumStyle {
     float glow;         // scales glow radius and strength: 0 off, 1 default
 } SpectrumStyle;
 
-// Analyzes SPECTRUM_FFT_SIZE samples (oldest first). ticks_per_row is the
-// number of analyses per history row (at least 1). Does nothing until
+// Analyzes SPECTRUM_FFT_SIZE samples (oldest first). Does nothing until
 // sample_rate is known (> 0).
-void spectrum_push(Spectrum *s, const float *samples, float sample_rate,
-                   int ticks_per_row);
+void spectrum_push(Spectrum *s, const float *samples, float sample_rate);
+
+// Moves the history on by seconds at rows_per_second, making a row each time
+// a full row's worth of time has passed.
+void spectrum_advance(Spectrum *s, float seconds, float rows_per_second);
 
 // box is in pixels, as passed to a ClaySokolCustomFn.
 void spectrum_draw(ClaySokol *cs, Clay_BoundingBox box, const Spectrum *s,

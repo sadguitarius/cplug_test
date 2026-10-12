@@ -21,8 +21,12 @@
 #include "spectrum.h"
 
 #ifdef _WIN32
+#include <windows.h> // QueryPerformanceCounter
+
 #define my_assert(cond) (cond) ? (void)0 : __debugbreak()
 #else
+#include <time.h> // clock_gettime
+
 #define my_assert(cond) (cond) ? (void)0 : __builtin_debugtrap()
 #endif // _WIN32
 
@@ -66,8 +70,19 @@ enum { NUM_SHAPES = ARRLEN(SHAPE_NAMES) };
 
 #define GUI_DEFAULT_WIDTH  1040
 #define GUI_DEFAULT_HEIGHT 440
-#define GUI_TICK_SECONDS   (1.0f / 60.0f)
-#define IMGUI_INITIAL_WIDTH 560 // layout units, until ImGui reports its fitted width
+// The GUI ticks at the display's refresh rate. A tick measures the time since
+// the previous one, capped so a stall does not jump animations.
+#define MAX_TICK_SECONDS   0.25f
+// Layout units. The ImGui window's size is computed from its content in 18 px
+// Lilex and the style set in pw_create_gui(); update it with that content.
+#define LAYOUT_GAP         8   // padding around and between the root's columns
+// The longest line (465) plus WindowPadding (2 x 20).
+#define IMGUI_COLUMN_WIDTH 540
+// 3 text rows (18), 5 widget rows (18 + 2 x FramePadding 5 = 28),
+// 7 x ItemSpacing (4), plus WindowPadding (2 x 20).
+#define IMGUI_CONTENT_HEIGHT 262
+#define PANEL_MIN_WIDTH    320 // room for the waveform buttons and spectrogram
+#define PANEL_MIN_HEIGHT   240
 
 // Output samples kept for the spectrogram; a power of two.
 #define SCOPE_SIZE 8192
@@ -75,7 +90,7 @@ enum { NUM_SHAPES = ARRLEN(SHAPE_NAMES) };
 
 #define FONT_NAME "Lilex-Regular.ttf"
 
-// returns 'CPLUG_NUM_PARAMS' on failure
+// returns NUM_PARAMS on failure
 uint32_t get_param_index(void *ptr, uint32_t paramId) {
     uint32_t i = 0;
     for (; i < ARRLEN(PARAM_IDS); i++)
@@ -97,7 +112,6 @@ typedef struct Plugin {
     ParamInfo paramInfo[NUM_PARAMS];
 
     float sampleRate;
-    uint32_t maxBufferSize;
 
     float paramValuesAudio[NUM_PARAMS];
 
@@ -112,6 +126,8 @@ typedef struct Plugin {
     ImVec4 clearColor;
     float scopeGlow;  // spectrogram glow: 0 off, 1 default, up to 2
     float scopeSpeed; // spectrogram history rows per second
+    float editorWidth;  // editor size in layout units, kept across reopening
+    float editorHeight;
 
     float paramValuesMain[NUM_PARAMS];
 
@@ -132,25 +148,15 @@ typedef struct Plugin {
     float scope[SCOPE_SIZE];
 } Plugin;
 
-void sendParamEventFromMain(Plugin *plugin, uint32_t type, uint32_t paramIdx,
+void sendParamEventFromMain(Plugin *plugin, uint32_t type, uint32_t paramId,
                             double value);
 
 typedef struct GUI {
     Plugin *plugin;
     void *pw;
-#ifdef _WIN32
-    char uniqueClassName[64];
-#endif
 
     float normalized_width;
     float normalized_height;
-
-    bool mouseDragging;
-    uint32_t dragParamId;
-    int dragStartX;
-    int dragStartY;
-    double dragStartParamNormalised;
-    double dragCurrentParamNormalised;
 
     GuiLibs *libs; // sokol_gfx, sokol_imgui, ImGui and Clay state for this editor
     ClaySokol *clay_sokol;
@@ -165,8 +171,11 @@ typedef struct GUI {
 
     Spectrum spectrum;
     int last_scope_head;
+    float scope_seconds; // time since the spectrogram's last analysis
 
-    float imgui_width; // the ImGui window's fitted width, in layout units
+    double last_tick_time; // now_seconds() at the previous tick, 0 before the first
+    float dt;              // seconds since the previous tick
+
 
     HostDpi host_dpi; // scale for DPI-aware hosts that never send one
 
@@ -239,6 +248,8 @@ void *cplug_createPlugin(CplugHostContext *ctx) {
     plugin->clearColor = (ImVec4){0.45f, 0.55f, 0.60f, 1.00f};
     plugin->scopeGlow = 1.0f;
     plugin->scopeSpeed = 12.0f;
+    plugin->editorWidth = GUI_DEFAULT_WIDTH;
+    plugin->editorHeight = GUI_DEFAULT_HEIGHT;
 
     return plugin;
 }
@@ -431,7 +442,6 @@ void cplug_setSampleRateAndBlockSize(void *ptr, double sampleRate,
                                      uint32_t maxBlockSize) {
     Plugin *plugin = (Plugin *)ptr;
     plugin->sampleRate = (float)sampleRate;
-    plugin->maxBufferSize = maxBlockSize;
 }
 
 // Audio thread only: the single writer of plugin->scope.
@@ -589,8 +599,32 @@ struct ParamState {
     float value;
 };
 
-static const uint32_t CLEAR_COLOR_IDS[4] = {'clrR', 'clrG', 'clrB', 'clrA'};
-enum { NUM_STATE_ENTRIES = NUM_PARAMS + ARRLEN(CLEAR_COLOR_IDS) };
+static const uint32_t EDITOR_SETTING_IDS[] = {'clrR', 'clrG', 'clrB', 'clrA',
+                                              'edtW', 'edtH'};
+enum { NUM_STATE_ENTRIES = NUM_PARAMS + ARRLEN(EDITOR_SETTING_IDS) };
+
+// The Plugin field an editor setting's state id stands for, or NULL.
+static float *editor_setting(Plugin *plugin, uint32_t id) {
+    switch (id) {
+    case 'clrR': return &plugin->clearColor.x;
+    case 'clrG': return &plugin->clearColor.y;
+    case 'clrB': return &plugin->clearColor.z;
+    case 'clrA': return &plugin->clearColor.w;
+    case 'edtW': return &plugin->editorWidth;
+    case 'edtH': return &plugin->editorHeight;
+    default: return NULL;
+    }
+}
+
+// Rejects values a damaged state could hold, such as an editor too small to
+// use. Accepts everything else.
+static bool editor_setting_valid(uint32_t id, float value) {
+    if (!isfinite(value))
+        return false;
+    if (id == 'edtW' || id == 'edtH')
+        return value >= 100.0f;
+    return true;
+}
 
 void cplug_saveState(void *userPlugin, const void *stateCtx,
                      cplug_writeProc writeProc) {
@@ -601,25 +635,11 @@ void cplug_saveState(void *userPlugin, const void *stateCtx,
         state[i].paramId = PARAM_IDS[i];
         state[i].value = plugin->paramValuesAudio[i];
     }
-    const ImVec4 c = plugin->clearColor;
-    const float rgba[4] = {c.x, c.y, c.z, c.w};
-    for (int i = 0; i < 4; i++) {
-        state[NUM_PARAMS + i].paramId = CLEAR_COLOR_IDS[i];
-        state[NUM_PARAMS + i].value = rgba[i];
+    for (int i = 0; i < (int)ARRLEN(EDITOR_SETTING_IDS); i++) {
+        state[NUM_PARAMS + i].paramId = EDITOR_SETTING_IDS[i];
+        state[NUM_PARAMS + i].value = *editor_setting(plugin, EDITOR_SETTING_IDS[i]);
     }
     writeProc(stateCtx, state, sizeof(state));
-}
-
-// Sets one clear color component from its state id; ignores other ids.
-static void load_clear_color_component(Plugin *plugin, uint32_t id, float value) {
-    if (id == CLEAR_COLOR_IDS[0])
-        plugin->clearColor.x = value;
-    else if (id == CLEAR_COLOR_IDS[1])
-        plugin->clearColor.y = value;
-    else if (id == CLEAR_COLOR_IDS[2])
-        plugin->clearColor.z = value;
-    else if (id == CLEAR_COLOR_IDS[3])
-        plugin->clearColor.w = value;
 }
 
 void cplug_loadState(void *userPlugin, const void *stateCtx,
@@ -640,7 +660,9 @@ void cplug_loadState(void *userPlugin, const void *stateCtx,
             sendParamEventFromMain(plugin, CPLUG_EVENT_PARAM_CHANGE_UPDATE,
                                    state[i].paramId, state[i].value);
         } else {
-            load_clear_color_component(plugin, state[i].paramId, state[i].value);
+            float *setting = editor_setting(plugin, state[i].paramId);
+            if (setting && editor_setting_valid(state[i].paramId, state[i].value))
+                *setting = state[i].value;
         }
     }
 }
@@ -707,6 +729,20 @@ void imgui_set_scale(GUI *gui, float scale) {
 // behavior
 static void gui_set_current_context(GUI *gui) { gui_libs_enter(gui->libs); }
 
+// Monotonic time in seconds, for measuring time between ticks.
+static double now_seconds(void) {
+#ifdef _WIN32
+    LARGE_INTEGER count, frequency;
+    QueryPerformanceCounter(&count);
+    QueryPerformanceFrequency(&frequency);
+    return (double)count.QuadPart / (double)frequency.QuadPart;
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+#endif
+}
+
 // Returns the malloc'd path of a file next to the plugin binary.
 static char *module_file_path(const char *name) {
     int dirname_length;
@@ -753,9 +789,12 @@ static void gui_drain_audio_events(GUI *gui) {
     cplug_atomic_exchange_i32(&plugin->audioToMainTail, tail);
 }
 
-// Analyzes the newest output samples, if any arrived since the last tick.
+// Analyzes the newest output samples, if any arrived since the last tick, and
+// moves the history on by the time since the last analysis. With no new audio
+// (transport stopped), the history holds still.
 static void gui_update_spectrum(GUI *gui) {
     Plugin *plugin = gui->plugin;
+    gui->scope_seconds += gui->dt;
     int head = cplug_atomic_load_i32(&plugin->scopeHead) & SCOPE_MASK;
     if (head == gui->last_scope_head)
         return;
@@ -763,9 +802,11 @@ static void gui_update_spectrum(GUI *gui) {
     float samples[SPECTRUM_FFT_SIZE];
     for (int i = 0; i < SPECTRUM_FFT_SIZE; i++)
         samples[i] = plugin->scope[(head - SPECTRUM_FFT_SIZE + i) & SCOPE_MASK];
-    // One analysis per tick, so rows per second sets the ticks per row.
-    int ticks_per_row = (int)lroundf(1.0f / (plugin->scopeSpeed * GUI_TICK_SECONDS));
-    spectrum_push(&gui->spectrum, samples, plugin->sampleRate, ticks_per_row);
+    spectrum_push(&gui->spectrum, samples, plugin->sampleRate);
+    // Capped so resuming after a stop does not jump the history.
+    spectrum_advance(&gui->spectrum, fminf(gui->scope_seconds, MAX_TICK_SECONDS),
+                     plugin->scopeSpeed);
+    gui->scope_seconds = 0.0f;
 }
 
 // A one-shot parameter change, as a host expects from a button.
@@ -830,10 +871,10 @@ static Clay_RenderCommandArray ui_layout(GUI *gui) {
 
     CLAY(CLAY_ID("Root"),
          {.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0)},
-                     .padding = CLAY_PADDING_ALL(8),
-                     .childGap = 8}}) {
+                     .padding = CLAY_PADDING_ALL(LAYOUT_GAP),
+                     .childGap = LAYOUT_GAP}}) {
         CLAY(CLAY_ID("ImGuiArea"),
-             {.layout = {.sizing = {CLAY_SIZING_FIXED(gui->imgui_width),
+             {.layout = {.sizing = {CLAY_SIZING_FIXED(IMGUI_COLUMN_WIDTH),
                                     CLAY_SIZING_GROW(0)}}}) {}
 
         // Styled like an ImGui window.
@@ -863,7 +904,7 @@ static Clay_RenderCommandArray ui_layout(GUI *gui) {
         }
     }
 
-    return Clay_EndLayout(GUI_TICK_SECONDS);
+    return Clay_EndLayout(gui->dt);
 }
 
 // The only custom element is the spectrogram.
@@ -880,18 +921,25 @@ static void ui_draw_custom(ClaySokol *cs, Clay_BoundingBox box, void *customData
                   });
 }
 
+
 void pw_get_info(PWGetInfo *info) {
     if (info->type == PW_INFO_INIT_SIZE) {
-        Plugin *plugin = (Plugin *)info->init_size.plugin;
-        // info->init_size.width = plugin->width;
-        // info->init_size.height = plugin->height;
-        info->init_size.width = GUI_DEFAULT_WIDTH;
-        info->init_size.height = GUI_DEFAULT_HEIGHT;
+        const Plugin *plugin = info->init_size.plugin;
+        info->init_size.width = (uint32_t)lroundf(plugin->editorWidth);
+        info->init_size.height = (uint32_t)lroundf(plugin->editorHeight);
     } else if (info->type == PW_INFO_CONSTRAIN_SIZE) {
-        // if (info->constrain_size.width > 1024)
-        //     info->constrain_size.width = 1024;
-        // if (info->constrain_size.height > 500)
-        //     info->constrain_size.height = 500;
+        // The requested size is in pixels: layout units times the content scale.
+        const GUI *gui = info->constrain_size.gui;
+        float scale = pw_get_content_scale_factor(gui->pw);
+        // Fits the ImGui window's content and leaves the panel its minimum.
+        float min_width = 3 * LAYOUT_GAP + IMGUI_COLUMN_WIDTH + PANEL_MIN_WIDTH;
+        float min_height = 2 * LAYOUT_GAP + fmaxf(IMGUI_CONTENT_HEIGHT, PANEL_MIN_HEIGHT);
+        uint32_t min_w = (uint32_t)ceilf(min_width * scale);
+        uint32_t min_h = (uint32_t)ceilf(min_height * scale);
+        if (info->constrain_size.width < min_w)
+            info->constrain_size.width = min_w;
+        if (info->constrain_size.height < min_h)
+            info->constrain_size.height = min_h;
     }
 }
 
@@ -919,8 +967,8 @@ void *pw_create_gui(void *_plugin, void *pw) {
     gui->plugin = plugin;
     gui->pw = pw;
 
-    gui->normalized_width = GUI_DEFAULT_WIDTH;
-    gui->normalized_height = GUI_DEFAULT_HEIGHT;
+    gui->normalized_width = plugin->editorWidth;
+    gui->normalized_height = plugin->editorHeight;
 
     gui->counter = 0;
     gui->f = 0.0f;
@@ -930,7 +978,6 @@ void *pw_create_gui(void *_plugin, void *pw) {
     for (int i = 0; i < NUM_PARAMS; i++)
         plugin->paramValuesMain[i] = plugin->paramValuesAudio[i];
     gui->last_scope_head = cplug_atomic_load_i32(&plugin->scopeHead) & SCOPE_MASK;
-    gui->imgui_width = IMGUI_INITIAL_WIDTH;
 
     CIMGUI_CHECKVERSION();
 
@@ -999,6 +1046,11 @@ void pw_destroy_gui(void *_gui) {
 void pw_tick(void *_gui) {
     GUI *gui = (GUI *)_gui;
 
+    double now = now_seconds();
+    gui->dt = gui->last_tick_time > 0.0 ? (float)(now - gui->last_tick_time) : 0.0f;
+    gui->dt = fminf(gui->dt, MAX_TICK_SECONDS);
+    gui->last_tick_time = now;
+
     gui_set_current_context(gui);
     host_dpi_tick(&gui->host_dpi, gui->pw);
     gui_drain_audio_events(gui);
@@ -1032,21 +1084,18 @@ void pw_tick(void *_gui) {
     simgui_new_frame(&(simgui_frame_desc_t){
         .width = fb_width,
         .height = fb_height,
-        .delta_time = GUI_TICK_SECONDS,
+        .delta_time = gui->dt,
         .dpi_scale = fbscale,
     });
     if (gui->font)
         ImGui_PushFontFloat(gui->font, 18.0f);
 
-    // ImGui coordinates are layout units times the content scale. A width of
-    // 0 makes ImGui fit the width to the content; Clay sizes the ImGuiArea
-    // column from it on the next tick.
+    // ImGui coordinates are layout units times the content scale.
     ImGui_SetNextWindowPos((ImVec2){area.x * scale, area.y * scale}, 0);
-    ImGui_SetNextWindowSize((ImVec2){0.0f, area.height * scale}, 0);
+    ImGui_SetNextWindowSize((ImVec2){area.width * scale, area.height * scale}, 0);
     ImGui_Begin("Demo Plugin", 0,
                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                     ImGuiWindowFlags_NoMove);
-    gui->imgui_width = ImGui_GetWindowWidth() / scale;
 
     ImGui_Text("This is some useful text.");
     ImGui_SliderFloat("float", &gui->f, 0.0f, 1.0f);
@@ -1101,6 +1150,8 @@ bool pw_event(const PWEvent *event) {
         scale = pw_get_content_scale_factor(gui->pw);
         gui->normalized_width = event->resize.width / scale;
         gui->normalized_height = event->resize.height / scale;
+        plugin->editorWidth = gui->normalized_width;
+        plugin->editorHeight = gui->normalized_height;
         break;
     case PW_EVENT_MOUSE_MOVE:
         gui_set_current_context(gui);

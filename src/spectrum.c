@@ -62,10 +62,8 @@ static void fft(float *re, float *im, int n) {
     }
 }
 
-void spectrum_push(Spectrum *s, const float *samples, float sample_rate,
-                   int ticks_per_row) {
+void spectrum_push(Spectrum *s, const float *samples, float sample_rate) {
     enum { N = SPECTRUM_FFT_SIZE };
-    s->ticks_per_row = ticks_per_row < 1 ? 1 : ticks_per_row;
     if (sample_rate <= 0.0f)
         return;
 
@@ -104,16 +102,22 @@ void spectrum_push(Spectrum *s, const float *samples, float sample_rate,
         float db = 20.0f * log10f(peak * 4.0f / (float)N + 1e-9f);
         float level = (db - FLOOR_DB) / -FLOOR_DB;
         row[b] = level < 0.0f ? 0.0f : level > 1.0f ? 1.0f : level;
-        s->held[b] = s->held_count == 0 ? row[b] : fmaxf(s->held[b], row[b]);
+        // Peak-holding between rows keeps short sounds visible in the history.
+        s->held[b] = s->held_any ? fmaxf(s->held[b], row[b]) : row[b];
     }
+    s->held_any = true;
+}
 
-    // Peak-holding over the span keeps short sounds visible in the history.
-    // ">=" because ticks_per_row can drop below held_count between pushes.
-    if (++s->held_count >= s->ticks_per_row) {
+void spectrum_advance(Spectrum *s, float seconds, float rows_per_second) {
+    s->row_phase += seconds * rows_per_second;
+    while (s->row_phase >= 1.0f) {
+        // A row with no analysis since the previous one repeats the latest.
+        const float *levels = s->held_any ? s->held : s->current;
         s->newest = (s->newest + 1) % SPECTRUM_ROWS;
         for (int b = 0; b < SPECTRUM_BANDS; b++)
-            s->rows[s->newest][b] = s->held[b];
-        s->held_count = 0;
+            s->rows[s->newest][b] = levels[b];
+        s->held_any = false;
+        s->row_phase -= 1.0f;
     }
 }
 
@@ -200,11 +204,8 @@ void spectrum_draw(ClaySokol *cs, Clay_BoundingBox box, const Spectrum *s,
     clay_sokol_line(cs, c[1][0], c[1][1], c[3][0], c[3][1], px, style->floor);
 
     // A row starts at the front line when it is made, then glides back one row
-    // spacing per ticks_per_row analyses. Oldest first, so newer rows draw on
-    // top.
-    float glide = s->ticks_per_row > 0
-                      ? fminf((float)s->held_count / (float)s->ticks_per_row, 1.0f)
-                      : 0.0f;
+    // spacing per row interval. Oldest first, so newer rows draw on top.
+    float glide = s->row_phase;
     float g = style->glow;
     for (int age = SPECTRUM_ROWS - 1; age >= 0; age--) {
         const float *row = s->rows[(s->newest - age + SPECTRUM_ROWS) % SPECTRUM_ROWS];

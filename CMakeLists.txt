@@ -51,6 +51,11 @@ endif()
 
 include_directories(lib/CPLUG/src lib/imgui lib/dcimgui lib/whereami/src lib/sokol lib/sokol/util lib/clay lib/stb)
 
+# The plugin never shows ImGui's demo windows. imgui_demo.cpp stays in the build
+# because dcimgui.cpp wraps the demo functions; with this define it compiles
+# them as empty stubs.
+add_compile_definitions(IMGUI_DISABLE_DEMO_WINDOWS)
+
 set(GUI_SOURCES
     lib/imgui/imgui.cpp
     lib/imgui/imgui_demo.cpp
@@ -58,7 +63,6 @@ set(GUI_SOURCES
     lib/imgui/imgui_tables.cpp
     lib/imgui/imgui_widgets.cpp
     lib/dcimgui/dcimgui.cpp
-    lib/dcimgui/dcimgui_internal.cpp
     lib/whereami/src/whereami.c
     src/gui_libs.c
     src/clay_sokol.c
@@ -71,7 +75,6 @@ set(GUI_SOURCES
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
     set_source_files_properties(
         lib/dcimgui/dcimgui.cpp
-        lib/dcimgui/dcimgui_internal.cpp
         src/clay_sokol.c
         PROPERTIES COMPILE_OPTIONS "-Wno-unused-function"
     )
@@ -256,7 +259,7 @@ if (WIN32 AND CMAKE_BUILD_TYPE MATCHES Debug)
         lib/CPLUG/src/cplug_standalone_win.c
     )
     target_compile_definitions(${PROJECT_NAME}_hotreload PRIVATE
-        HOTRELOAD_WATCH_DIR="${SOURCE_DIR_WIN}\\\\example"
+        HOTRELOAD_WATCH_DIR="${SOURCE_DIR_WIN}\\\\src"
         HOTRELOAD_LIB_PATH="${BINARY_DIR_WIN}\\\\${CMAKE_BUILD_TYPE}\\\\${HOTRELOAD_LIB_NAME}.dll"
         HOTRELOAD_BUILD_COMMAND="cmake --build ${BINARY_DIR_WIN} --config Debug --target ${HOTRELOAD_LIB_NAME}"
         CPLUG_SHARED
