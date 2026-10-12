@@ -63,6 +63,7 @@ set(GUI_SOURCES
     src/gui_libs.c
     src/clay_sokol.c
     src/spectrum.c
+    src/host_dpi.c
 )
 
 # get rid of annoying warnings from unused dcimgui bindings, and from

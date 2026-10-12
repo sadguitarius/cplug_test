@@ -17,11 +17,10 @@
 
 #include "clay_sokol.h"
 #include "gui_libs.h"
+#include "host_dpi.h"
 #include "spectrum.h"
 
 #ifdef _WIN32
-#include <ShellScalingApi.h>
-
 #define my_assert(cond) (cond) ? (void)0 : __debugbreak()
 #else
 #define my_assert(cond) (cond) ? (void)0 : __builtin_debugtrap()
@@ -168,6 +167,8 @@ typedef struct GUI {
     int last_scope_head;
 
     float imgui_width; // the ImGui window's fitted width, in layout units
+
+    HostDpi host_dpi; // scale for DPI-aware hosts that never send one
 
     ImFont *font;
 
@@ -441,6 +442,53 @@ static void push_scope(Plugin *plugin, const float *samples, uint32_t count) {
     cplug_atomic_exchange_i32(&plugin->scopeHead, (head + (int)count) & SCOPE_MASK);
 }
 
+// Renders count mono samples of the synth into block. Audio thread only.
+static void render_block(Plugin *plugin, float *block, uint32_t count) {
+    if (plugin->midiNote == -1) {
+        memset(block, 0, sizeof(float) * count);
+        return;
+    }
+    static const float mypi = 3.141592653589793f;
+    float phase = plugin->oscPhase;
+    float Hz = 440.0f * exp2f(((float)plugin->midiNote - 69.0f) * 0.0833333f);
+    float inc = Hz / plugin->sampleRate;
+    float dB = -60.0f + plugin->velocity * 54; // -6dB max
+    float vol = powf(10.0f, dB / 20.0f);
+    int shape =
+        shape_index(plugin->paramValuesAudio[get_param_index(plugin, 'shap')]);
+
+    for (uint32_t i = 0; i < count; i++) {
+        float sample;
+        if (shape == 0)
+            sample = sinf(2 * mypi * phase);
+        else if (shape == 1)
+            sample = phase < 0.5f ? 0.5f : -0.5f;
+        else
+            sample = (2.0f * phase - 1.0f) * 0.6f;
+        block[i] = sample * vol;
+
+        phase += inc;
+        phase -= (int)phase;
+    }
+    plugin->oscPhase = phase;
+}
+
+// Copies a mono block to both output channels starting at frame, as float or
+// double: the host chooses the sample type (CPLUG_AUDIO_SAMPLE_*).
+static void write_output(const CplugProcessContext *ctx, void *output,
+                         uint32_t frame, const float *block, uint32_t count) {
+    if (ctx->audioSampleType == CPLUG_AUDIO_SAMPLE_FLOAT64) {
+        double **out = (double **)output;
+        for (int ch = 0; ch < 2; ch++)
+            for (uint32_t i = 0; i < count; i++)
+                out[ch][frame + i] = block[i];
+    } else {
+        float **out = (float **)output;
+        for (int ch = 0; ch < 2; ch++)
+            memcpy(&out[ch][frame], block, sizeof(float) * count);
+    }
+}
+
 void cplug_process(void *ptr, CplugProcessContext *ctx) {
     DISABLE_DENORMALS
 
@@ -505,53 +553,21 @@ void cplug_process(void *ptr, CplugProcessContext *ctx) {
             // this line below to break the loop frame =
             // event.processAudio.endFrame;
 
-            float **output = ctx->getAudioOutput(ctx, 0);
+            // Channel pointer arrays, float or double per ctx->audioSampleType.
+            void *output = ctx->getAudioOutput(ctx, 0);
             CPLUG_LOG_ASSERT(output != NULL)
-            CPLUG_LOG_ASSERT(output[0] != NULL);
-            CPLUG_LOG_ASSERT(output[1] != NULL);
-            uint32_t startFrame = frame;
 
-            if (plugin->midiNote == -1) {
-                // Silence
-                memset(&output[0][frame], 0,
-                       sizeof(float) * (event.processAudio.endFrame - frame));
-                memset(&output[1][frame], 0,
-                       sizeof(float) * (event.processAudio.endFrame - frame));
-                frame = event.processAudio.endFrame;
-            } else {
-                float phase = plugin->oscPhase;
-
-                float Hz = 440.0f * exp2f(((float)plugin->midiNote - 69.0f) *
-                                          0.0833333f);
-                float inc = Hz / plugin->sampleRate;
-                float dB = -60.0f + plugin->velocity * 54; // -6dB max
-                float vol = powf(10.0f, dB / 20.0f);
-                int shape = shape_index(
-                    plugin->paramValuesAudio[get_param_index(plugin, 'shap')]);
-
-                for (; frame < event.processAudio.endFrame; frame++) {
-                    static const float mypi = 3.141592653589793f;
-
-                    float sample;
-                    if (shape == 0)
-                        sample = sinf(2 * mypi * phase);
-                    else if (shape == 1)
-                        sample = phase < 0.5f ? 0.5f : -0.5f;
-                    else
-                        sample = (2.0f * phase - 1.0f) * 0.6f;
-                    sample *= vol;
-
-                    for (int ch = 0; ch < 2; ch++)
-                        output[ch][frame] = sample;
-
-                    phase += inc;
-                    phase -= (int)phase;
-                }
-
-                plugin->oscPhase = phase;
+            // Render in float, then convert on output; the scope takes float.
+            while (frame < event.processAudio.endFrame) {
+                float block[256];
+                uint32_t count = event.processAudio.endFrame - frame;
+                if (count > ARRLEN(block))
+                    count = ARRLEN(block);
+                render_block(plugin, block, count);
+                write_output(ctx, output, frame, block, count);
+                push_scope(plugin, block, count);
+                frame += count;
             }
-            push_scope(plugin, &output[0][startFrame],
-                       event.processAudio.endFrame - startFrame);
             break;
         }
         default:
@@ -960,23 +976,6 @@ void *pw_create_gui(void *_plugin, void *pw) {
         gui->imgui_style = *style;
     }
 
-    // fix for Reason being dumb and not passing scaling information to plugins
-    // #ifdef _WIN32
-    //     DPI_AWARENESS awareness =
-    //         GetAwarenessFromDpiAwarenessContext(GetThreadDpiAwarenessContext());
-    //     if (awareness != DPI_AWARENESS_UNAWARE) {
-    //         HMONITOR monitor = MonitorFromWindow(pw_get_native_window(pw),
-    //                                              MONITOR_DEFAULTTONEAREST);
-    //         DEVICE_SCALE_FACTOR device_scale_factor;
-    //         HRESULT hr = GetScaleFactorForMonitor(monitor,
-    //         &device_scale_factor); PW_ASSERT(hr == S_OK); float scale =
-    //         device_scale_factor / 100.0f; cplug_setScaleFactor(gui->pw,
-    //         scale); cplug_setSize(gui->pw,
-    //         (uint32_t)lroundf(gui->normalized_width * scale),
-    //                       (uint32_t)lroundf(gui->normalized_height * scale));
-    //     }
-    // #endif // _WIN32
-
     float scale = pw_get_content_scale_factor(gui->pw);
     imgui_set_scale(gui, scale);
 
@@ -1001,6 +1000,7 @@ void pw_tick(void *_gui) {
     GUI *gui = (GUI *)_gui;
 
     gui_set_current_context(gui);
+    host_dpi_tick(&gui->host_dpi, gui->pw);
     gui_drain_audio_events(gui);
     gui_update_spectrum(gui);
 
@@ -1140,6 +1140,7 @@ bool pw_event(const PWEvent *event) {
         gui->mouse_button_pressed = 0;
         break;
     case PW_EVENT_CONTENT_SCALE_FACTOR_CHANGED:
+        host_dpi_on_scale_event(&gui->host_dpi);
         scale = event->content_scale_factor;
         uint32_t width = (uint32_t)lroundf(scale * gui->normalized_width);
         uint32_t height = (uint32_t)lroundf(scale * gui->normalized_height);
